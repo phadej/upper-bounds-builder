@@ -1,0 +1,70 @@
+-- This file has been generated from package.yaml by hpack version 0.7.1.
+--
+-- see: https://github.com/sol/hpack
+
+name:           upper-bounds-builder
+version:        0.1.0.0
+synopsis:       Upper bounds builder
+description:    Upper bounds builder for hackage packages
+category:       Text
+homepage:       https://github.com/phadej/upper-bounds-builder#readme
+bug-reports:    https://github.com/phadej/upper-bounds-builder/issues
+author:         Oleg Grenrus <oleg.grenrus@iki.fi>
+maintainer:     Oleg Grenrus <oleg.grenrus@iki.fi>
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+cabal-version:  >= 1.10
+
+extra-source-files:
+    README.md
+
+source-repository head
+  type: git
+  location: https://github.com/phadej/upper-bounds-builder
+
+library
+  hs-source-dirs:
+      src
+  ghc-options: -Wall
+  build-depends:
+      base >= 4.7 && <4.9
+    , tar >=0.4 && <0.5
+    , bytestring >=0.9
+    , text >=0.7
+    , split >= 0.1.2.3
+    , time  >= 1.4
+    , Cabal      >= 1.18
+    , containers  >= 0.5
+    , directory    >= 1.0
+    , filepath     >= 1.1
+    , binary
+    , binary-orphans
+    , binary-tagged
+    , exceptions
+  exposed-modules:
+      Distribution.PackDeps
+  default-language: Haskell2010
+
+executable upper-bounds-builder
+  main-is: Main.hs
+  hs-source-dirs:
+      cli
+  ghc-options: -Wall
+  build-depends:
+      base >= 4.7 && <4.9
+    , tar >=0.4 && <0.5
+    , bytestring >=0.9
+    , text >=0.7
+    , split >= 0.1.2.3
+    , time  >= 1.4
+    , Cabal      >= 1.18
+    , containers  >= 0.5
+    , directory    >= 1.0
+    , filepath     >= 1.1
+    , binary
+    , binary-orphans
+    , binary-tagged
+    , exceptions
+    , upper-bounds-builder
+  default-language: Haskell2010

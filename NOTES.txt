@@ -1,0 +1,34 @@
+docker run -ti --rm -v $(pwd):/app -w /app ubuntu:trusty
+
+apt-get -yq update
+apt-get -yq --no-install-suggests --no-install-recommends --force-yes install
+software-properties-common python-software-properties
+apt-add-repository -y "ppa:hvr/ghc"
+apt-get -yq update
+apt-get -yq --no-install-suggests --no-install-recommends --force-yes install
+cabal-install-1.22 ghc-7.10.2 alex-3.1.4 happy-1.19.5
+
+apt-get -yq --no-install-suggests --no-install-recommends --force-yes install
+libpcre3-dev zlib1g-dev libxml2-dev
+
+export CABALVER=1.22
+export GHCVER=7.10.2
+export ALEXVER=3.1.4
+export HAPPYVER=1.19.5
+export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:/opt/happy/$HAPPYVER/bin:/opt/alex/$ALEXVER/bin:$PATH
+
+export LANG=C.UTF-8 # to make stuff compile
+
+libxml
+--extra-include-dirs=/usr/include/libxml2
+
+HsOpenSSL
+fast-bignum: false
+--flags="-fast-bignum"
+
+skip package:
+network-bytestring
+
+syb:
+skip tests
+https://github.com/dreixel/syb/pull/11
