@@ -32,6 +32,9 @@ library
     , tar >=0.4 && <0.5
     , bytestring >=0.9
     , text >=0.7
+    , aeson
+    , yaml
+    , transformers
     , split >= 0.1.2.3
     , time  >= 1.4
     , Cabal      >= 1.18
@@ -56,6 +59,9 @@ executable upper-bounds-builder
     , tar >=0.4 && <0.5
     , bytestring >=0.9
     , text >=0.7
+    , aeson
+    , yaml
+    , transformers
     , split >= 0.1.2.3
     , time  >= 1.4
     , Cabal      >= 1.18
