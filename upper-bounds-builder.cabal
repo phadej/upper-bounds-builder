@@ -41,11 +41,13 @@ library
     , containers  >= 0.5
     , directory    >= 1.0
     , filepath     >= 1.1
+    , pretty
     , binary
     , binary-orphans
     , binary-tagged
     , exceptions
   exposed-modules:
+      Bourne
       Distribution.PackDeps
   default-language: Haskell2010
 
@@ -68,6 +70,7 @@ executable upper-bounds-builder
     , containers  >= 0.5
     , directory    >= 1.0
     , filepath     >= 1.1
+    , pretty
     , binary
     , binary-orphans
     , binary-tagged

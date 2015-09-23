@@ -23,6 +23,8 @@ import           Distribution.Package
 import           System.Directory
 import           System.FilePath
 
+import qualified Bourne
+
 import           Debug.Trace
 
 cached :: (Binary a, HasStructuralInfo a, HasSemanticVersion a) => FilePath -> IO a -> IO a
@@ -56,21 +58,28 @@ main = do
   print packageInput
   case traverse (flip Map.lookup newest >=> piDesc) packageInput of
     Nothing  -> print $ "not such packages: " ++ show packageInput
-    Just dis -> do let alldeps = deepDeps newest dis -- Consider all dependencies!
-                   putStrLn "set -ex"
-                   putStrLn ""
-                   --mapM_ putStrLn (concatMap buildLine (buildOrder alldeps))
-                   -- mapM_ putStrLn (concatMap buildLineTest (buildOrder alldeps))
-                   --mapM_ putStrLn (concatMap buildLine' alldeps)
-                   mapM_ putStrLn (concatMap buildLine' (buildOrder alldeps))
+    Just dis -> putStrLn . Bourne.showScript $ do
+                   let alldeps = removeUnexisting newest . deepDeps newest $ dis -- Consider all dependencies!
+                   Bourne.cmd "set" ["-ex"]
+                   -- Create directories
+                   Bourne.cmd "mkdir" ["-p", "/app/src"]
+                   Bourne.cmd "mkdir" ["-p", "/app/log"]
+                   -- Download packages
+                   Bourne.cmd "cd" ["/app/src"]
+                   traverse downloadScript (buildOrder alldeps)
+
+removeUnexisting :: Newest -> [DescInfo] -> [DescInfo]
+removeUnexisting newest = map f . filter p
+  where p di = Map.member (packageIdentifierName . diPackage $ di) newest
+        f di = di { diDeps = filter p' (diDeps di), diLibDeps = filter p' (diLibDeps di) }
+        p' dep = Map.member (dependencyName dep) newest
 
 showPackageIdentifier :: PackageIdentifier -> String
 showPackageIdentifier (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version
 
 -- | See <https://ghc.haskell.org/trac/ghc/wiki/Commentary/Libraries/VersionHistory>
 alwaysPresent :: [String]
-alwaysPresent = ["rts", "ghc", "ghc-prim", "base", "bin-package-db", "hpc", "Win32", "integer", "integer-gmp", "integer-simple", "integer-gmp2", "par-classes"]
-  ++ words "Cabal array base bin-package-db binary bytestring containers deepseq directory filepath ghc ghc-prim haskeline hoopl hpc integer-gmp pretty process rts template-haskell terminfo time transformers unix xhtml"
+alwaysPresent = words "Cabal Win32 array base bin-package-db binary bytestring containers deepseq directory filepath ghc ghc-prim haskeline hoopl hpc integer-gmp pretty process rts template-haskell terminfo time transformers unix xhtml"
 
 buildOrder :: [DescInfo] -> [DescInfo]
 buildOrder = go []
@@ -122,6 +131,14 @@ buildLineTest di
                 ]
   where namever = showPackageIdentifier . diPackage $ di
         name = packageIdentifierName . diPackage $ di
+
+-- Scripts
+
+downloadScript :: DescInfo -> Bourne.Script
+downloadScript di = Bourne.test (Bourne.dirNotExists namever) (Bourne.cmd "cabal" ["get", "-v0", namever])
+  where namever = showPackageIdentifier . diPackage $ di
+
+-- -> String functions
 
 dependencyName :: Dependency -> String
 dependencyName (Dependency (PackageName name) _) = name

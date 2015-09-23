@@ -25,6 +25,7 @@ dependencies:
   - containers  >= 0.5
   - directory    >= 1.0
   - filepath     >= 1.1
+  - pretty
   - binary
   - binary-orphans
   - binary-tagged
