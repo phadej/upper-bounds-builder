@@ -1,23 +1,27 @@
 lens: {}
 wreq: {}
 warp: {}
-syb:
-  # https://github.com/dreixel/syb/pull/11
-  expected-test-failure: true
+packdeps: {}
+syb: {}
 # Deprecated in favour of network
 network-bytestring:
   skip: true
 HsOpenSSL:
   # https://github.com/phonohawk/HsOpenSSL/issues/36
   allow-newer: false
+  apt-packages:
+    - libssl-dev
 libxml:
   extra-flags:
     - "--extra-include-dirs=/usr/include/libxml2"
   apt-packages:
-    - zlib1g-dev
+    - libxml2-dev
+tar:
+  extra-flags:
+    - "-f-old-time"
 zlib:
   apt-packages:
-  - zlib1g-dev
+    - zlib1g-dev
 pcre-light:
   apt-packages:
     - libpcre3-dev

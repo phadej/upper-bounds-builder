@@ -10,6 +10,9 @@ module Bourne
   , dirNotExists
   -- * Command
   , cmd
+  , mkdirp
+  , cd
+  , touch
   ) where
 
 import Control.Applicative
@@ -71,6 +74,15 @@ dirNotExists = DirExists False
 
 cmd :: String -> [String] -> Script
 cmd c cs = toScriptM . Cmd . RawCommand $ c : cs
+
+cd :: FilePath -> Script
+cd d = cmd "cd" [d]
+
+mkdirp :: FilePath -> Script
+mkdirp d = cmd "mkdir" ["-p", d]
+
+touch :: FilePath -> Script
+touch f = cmd "touch" [f]
 
 test :: Test -> Script -> Script
 test t c = toScriptM (If t (execScriptM c))
