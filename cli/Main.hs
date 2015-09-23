@@ -8,24 +8,24 @@ import           Control.Monad.IO.Class
 import           Data.Aeson
 import           Data.Binary.Orphans
 import           Data.Binary.Tagged
-import           Data.Data (Typeable)
-import           Data.List as L
+import           Data.Foldable
+import           Data.List as L (sort, partition)
 import           Data.Map (Map)
 import qualified Data.Map as Map
+import           Data.Maybe (fromMaybe)
 import           Data.Monoid
-import           Data.Set (Set)
-import qualified Data.Set as Set
 import           Data.Traversable
 import           Data.Version
 import           Data.Yaml
 import           Distribution.PackDeps
 import           Distribution.Package
+import           Prelude hiding (elem, all, notElem)
 import           System.Directory
 import           System.FilePath
 
 import qualified Bourne
 
-import           Debug.Trace
+-- import           Debug.Trace
 
 cached :: (Binary a, HasStructuralInfo a, HasSemanticVersion a) => FilePath -> IO a -> IO a
 cached path mx = do
@@ -48,34 +48,42 @@ decodeFileThrow path = do
     Right x   -> return x
     Left exc  -> throwM exc
 
+lookupPackageConfig :: String -> Map String PackageConfig -> PackageConfig
+lookupPackageConfig name m = fromMaybe defPackageConfig (Map.lookup name m)
+
+type PackageConfigs = Map String PackageConfig
+
 main :: IO ()
 main = do
-  pkgcfg <- decodeFileThrow "config.yaml" :: IO (Map String PackageConfig)
-  print pkgcfg
+  pkgcfg <- decodeFileThrow "config.yaml" :: IO PackageConfigs
   newest <- cached ".cache/newest" loadNewest
-  reverses <- cached ".cache/reverses" (return (getReverses newest))
-  let packageInput = Map.keys pkgcfg -- TODO: filter skippable
-  print packageInput
+  -- reverses <- cached ".cache/reverses" (return (getReverses newest))
+  let packageInput = Map.keys pkgcfg
   case traverse (flip Map.lookup newest >=> piDesc) packageInput of
     Nothing  -> print $ "not such packages: " ++ show packageInput
     Just dis -> putStrLn . Bourne.showScript $ do
-                   let alldeps = removeUnexisting newest . deepDeps newest $ dis -- Consider all dependencies!
+                   let skippable = fst <$> filter (pcSkip . snd) (Map.toList pkgcfg)
+                   let alldeps = removeUnexisting newest skippable . deepDeps newest $ dis -- Consider all dependencies!
+                   let aptPkgs = fmap getAptPackage . Prelude.concatMap pcAptPackages . Map.elems $ pkgcfg
                    Bourne.cmd "set" ["-ex"]
+                   -- Install system dependencies
+                   Bourne.cmd "apt-get" $ words "-yq --no-install-suggests --no-install-recommends --force-yes install" ++ aptPkgs
                    -- Create directories
                    Bourne.cmd "mkdir" ["-p", "/app/src"]
                    Bourne.cmd "mkdir" ["-p", "/app/log"]
                    -- Download packages
                    Bourne.cmd "cd" ["/app/src"]
-                   traverse downloadScript (buildOrder alldeps)
+                   traverse_ downloadScript (buildOrder alldeps)
+                   -- Install
+                   traverse_ (installScript pkgcfg) (buildOrder alldeps)
 
-removeUnexisting :: Newest -> [DescInfo] -> [DescInfo]
-removeUnexisting newest = map f . filter p
-  where p di = Map.member (packageIdentifierName . diPackage $ di) newest
-        f di = di { diDeps = filter p' (diDeps di), diLibDeps = filter p' (diLibDeps di) }
-        p' dep = Map.member (dependencyName dep) newest
-
-showPackageIdentifier :: PackageIdentifier -> String
-showPackageIdentifier (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version
+removeUnexisting :: Newest -> [String] -> [DescInfo] -> [DescInfo]
+removeUnexisting newest toSkip = map filterDeps . filter pDescInfo
+  where pDescInfo di     = pName (packageIdentifierName . diPackage $ di)
+        filterDeps di    = di { diDeps = filter pDependency (diDeps di), diLibDeps = filter pDependency (diLibDeps di) }
+        pDependency dep  = pName (dependencyName dep)
+        pName name       = Map.member name newest && notElem name toSkip'
+        toSkip'          = alwaysPresent ++ toSkip
 
 -- | See <https://ghc.haskell.org/trac/ghc/wiki/Commentary/Libraries/VersionHistory>
 alwaysPresent :: [String]
@@ -96,29 +104,7 @@ buildOrder = go []
 
 --
 
-type BuildLine = String
-
-buildLine' :: DescInfo -> [BuildLine]
-buildLine' di
-  | name `elem` alwaysPresent = []
-  | otherwise = [ namever ]
-  where namever = showPackageIdentifier . diPackage $ di
-        name = packageIdentifierName . diPackage $ di
-
-buildLine :: DescInfo -> [BuildLine]
-buildLine di
-  | name `elem` alwaysPresent = []
-  | otherwise = [ "cd /app"
-                , "if [ ! -d " <> namever <> " ]; then"
-                , "  cabal get " <> namever <> " || true"
-                , "  cd /app/" <> namever
-                , "  cabal configure -v2 --allow-newer"
-                , "  cabal install -v2 --allow-newer"
-                , "fi"
-                ]
-  where namever = showPackageIdentifier . diPackage $ di
-        name = packageIdentifierName . diPackage $ di
-
+{-
 buildLineTest :: DescInfo -> [BuildLine]
 buildLineTest di
   | name `elem` alwaysPresent = []
@@ -131,6 +117,7 @@ buildLineTest di
                 ]
   where namever = showPackageIdentifier . diPackage $ di
         name = packageIdentifierName . diPackage $ di
+-}
 
 -- Scripts
 
@@ -138,6 +125,20 @@ downloadScript :: DescInfo -> Bourne.Script
 downloadScript di = Bourne.test (Bourne.dirNotExists namever) (Bourne.cmd "cabal" ["get", "-v0", namever])
   where namever = showPackageIdentifier . diPackage $ di
 
+installScript :: PackageConfigs -> DescInfo -> Bourne.Script
+installScript pkgcfg di = Bourne.test (Bourne.dirNotExists distDir) $ do
+                            Bourne.cmd "cd" [srcDir]
+                            Bourne.cmd "cabal" $ ["configure", "-v2"] ++ allowNewer ++ extraFlags
+                            Bourne.cmd "cabal" ["build", "-v2"]
+                            Bourne.cmd "cabal" ["copy", "-v2"]
+                            Bourne.cmd "cabal" ["register", "-v2", "--user"]
+  where namever    = showPackageIdentifier . diPackage $ di
+        name       = packageIdentifierName . diPackage $ di
+        srcDir     = "/app/src/" <> namever
+        distDir    = srcDir <> "/dist"
+        pc         = lookupPackageConfig name pkgcfg
+        allowNewer = if pcAllowNewer pc then ["--allow-newer"] else []
+        extraFlags = getCliFlag <$> pcExtraFlags pc
 -- -> String functions
 
 dependencyName :: Dependency -> String
@@ -146,25 +147,28 @@ dependencyName (Dependency (PackageName name) _) = name
 packageIdentifierName :: PackageIdentifier -> String
 packageIdentifierName (PackageIdentifier (PackageName name) _) = name
 
+showPackageIdentifier :: PackageIdentifier -> String
+showPackageIdentifier (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version
+
 -- Config
 
 instance FromJSON PackageName where
   parseJSON = fmap PackageName . parseJSON
 
-newtype AptPackage = AptPackage String
+newtype AptPackage = AptPackage { getAptPackage :: String }
   deriving (Eq, Ord, Show)
 
 instance FromJSON AptPackage where
   parseJSON = fmap AptPackage . parseJSON
 
-newtype CliFlag = CliFlag String
+newtype CliFlag = CliFlag { getCliFlag :: String }
   deriving (Eq, Ord, Show)
 
 instance FromJSON CliFlag where
   parseJSON = fmap CliFlag . parseJSON
 
 data PackageConfig = PackageConfig
-  { pcBuild          :: Bool
+  { pcSkip           :: Bool
   , pcAllowNewer     :: Bool
   , pcExtraFlags     :: [CliFlag]
   , pcAptPackages    :: [AptPackage]
@@ -172,9 +176,12 @@ data PackageConfig = PackageConfig
   }
   deriving (Eq, Ord, Show)
 
+defPackageConfig :: PackageConfig
+defPackageConfig = PackageConfig False True [] [] False
+
 instance FromJSON PackageConfig where
   parseJSON = withObject "Package config" $ \obj ->
-    PackageConfig <$> obj .:? "skip" .!= True
+    PackageConfig <$> obj .:? "skip" .!= False
                   <*> obj .:? "allow-newer" .!= True
                   <*> obj .:? "extra-flags" .!= []
                   <*> obj .:? "apt-packages" .!= []
