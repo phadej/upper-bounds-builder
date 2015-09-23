@@ -1,6 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main (main) where
 
+-- TODO: skip-benchmarks
+-- TODO: expected-test-failure
+
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Catch
@@ -9,7 +12,8 @@ import           Data.Aeson
 import           Data.Binary.Orphans
 import           Data.Binary.Tagged
 import           Data.Foldable
-import           Data.List as L (sort, partition)
+import           Data.Function (on)
+import           Data.List as L (sort, sortBy, partition)
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
@@ -22,7 +26,7 @@ import           Distribution.Package
 import           Prelude hiding (elem, all, notElem)
 import           System.Directory
 import           System.FilePath
-import System.IO (stderr, hPutStrLn)
+import           System.IO (stderr, hPutStrLn)
 
 import qualified Bourne
 
@@ -80,25 +84,36 @@ main = do
     Just dis -> do
       let skippable = fst <$> filter (pcSkip . snd) (Map.toList pkgcfg)
       let alldeps = removeUnexisting newest skippable . deepDeps newest $ dis -- Consider all dependencies!
+      let buildOrderDeps = buildOrder alldeps
+      let alphaOrderDeps = sortBy (compare `on` packageIdentifierName . diPackage) alldeps
+      -- Print package closure
+      hPutStrLn stderr "Package to be built:"
+      traverse_ (hPutStrLn stderr) . sort . fmap (packageIdentifierName . diPackage) $ alldeps
       -- Check upper bounds
+      hPutStrLn stderr "---"
       traverse_ (checkDepsCli checkDeps newest) alldeps
       -- Output test build script
       putStrLn . Bourne.showScript $ do
         let aptPkgs = fmap getAptPackage . Prelude.concatMap pcAptPackages . Map.elems $ pkgcfg
         Bourne.cmd "set" ["-ex"]
         -- Install system dependencies
-        Bourne.cmd "apt-get" $ words "-yq --no-install-suggests --no-install-recommends --force-yes install" ++ aptPkgs
+        Bourne.test (Bourne.fileNotExists aptGetInstallLog) $ do
+          Bourne.touch aptGetInstallLog
+          Bourne.cmd "apt-get" $ words "-yq --no-install-suggests --no-install-recommends --force-yes install" ++ aptPkgs ++ ["2>&1", ">", aptGetInstallLog]
         -- Create directories
         Bourne.mkdirp "/app/src"
         Bourne.mkdirp "/app/log"
         Bourne.mkdirp "/app/dist"
         -- Download packages
         Bourne.cd "/app/src"
-        traverse_ downloadScript (buildOrder alldeps)
+        traverse_ downloadScript alphaOrderDeps
         -- Install
-        traverse_ (installScript pkgcfg) (buildOrder alldeps)
+        traverse_ (installScript pkgcfg) buildOrderDeps
         -- Test
-        traverse_ (testScript pkgcfg) (buildOrder alldeps)
+        traverse_ (testScript pkgcfg) alphaOrderDeps
+
+aptGetInstallLog :: FilePath
+aptGetInstallLog = "/app/log/apt-get-install.log"
 
 removeUnexisting :: Newest -> [String] -> [DescInfo] -> [DescInfo]
 removeUnexisting newest toSkip = map filterDeps . filter pDescInfo
@@ -146,19 +161,29 @@ installScript pkgcfg di = Bourne.test (Bourne.dirNotExists distDir) $ do
         name       = packageIdentifierName . diPackage $ di
         srcDir     = "/app/src/" <> namever
         distDir    = "/app/dist/" <> namever
-        buildDirFlag = "--builddir=" <> distDir
         logDir     = "/app/log/" <> namever
         pc         = lookupPackageConfig name pkgcfg
         allowNewer = if pcAllowNewer pc then ["--allow-newer"] else []
         extraFlags = getCliFlag <$> pcExtraFlags pc
 
 testScript :: PackageConfigs -> DescInfo -> Bourne.Script
-testScript pkgcfg di = Bourne.test (Bourne.fileNotExists testLogFile) $ do
-                         Bourne.cd srcDir
-                         Bourne.touch testLogFile
-                         cabalCmd "configure" distDir (logDir <> "/configure-test.log") $ ["--enable-tests", "--enable-benchmarks" ] ++ allowNewer ++ extraFlags
-                         cabalCmd "build"     distDir (logDir <> "/test-build.log")     $ []
-                         cabalCmd "test"      distDir testLogFile                       $ []
+testScript pkgcfg di
+  | pcSkipTests pc = return ()
+  | otherwise      = testScript' pkgcfg di
+  where pc    =  lookupPackageConfig name pkgcfg
+        name = packageIdentifierName . diPackage $ di
+
+testScript' :: PackageConfigs -> DescInfo -> Bourne.Script
+testScript' pkgcfg di = Bourne.test (Bourne.fileNotExists testLogFile) $ do
+                          Bourne.cd srcDir
+                          Bourne.touch testLogFile
+                          -- TODO: add benchmarks back
+                          cabalCmd "configure" distDir (logDir <> "/test-configure.log") $ ["--enable-tests" ] ++ allowNewer ++ extraFlags
+                          cabalCmd "build"     distDir (logDir <> "/test-build.log")     $ []
+                          -- doctest hack, it requires dist/ 
+                          Bourne.test (Bourne.dirNotExists "dist") $ Bourne.cmd "ln" ["-s", distDir, "dist"]
+                          cabalCmd "test"      distDir testLogFile                       $ []
+                                   -- TODO: remove dist link (test -h)
   where namever    = showPackageIdentifier . diPackage $ di
         name       = packageIdentifierName . diPackage $ di
         srcDir     = "/app/src/" <> namever
@@ -206,12 +231,14 @@ data PackageConfig = PackageConfig
   , pcAllowNewer     :: Bool
   , pcExtraFlags     :: [CliFlag]
   , pcAptPackages    :: [AptPackage]
+  , pcSkipTests      :: Bool
+  , pcSkipBenchmarks :: Bool
   , pcExpectTestFail :: Bool
   }
   deriving (Eq, Ord, Show)
 
 defPackageConfig :: PackageConfig
-defPackageConfig = PackageConfig False True [] [] False
+defPackageConfig = PackageConfig False True [] [] False False False
 
 instance FromJSON PackageConfig where
   parseJSON = withObject "Package config" $ \obj ->
@@ -219,4 +246,6 @@ instance FromJSON PackageConfig where
                   <*> obj .:? "allow-newer" .!= True
                   <*> obj .:? "extra-flags" .!= []
                   <*> obj .:? "apt-packages" .!= []
+                  <*> obj .:? "skip-tests" .!= False
+                  <*> obj .:? "skip-benchmarks" .!= False
                   <*> obj .:? "expected-test-failure" .!= False

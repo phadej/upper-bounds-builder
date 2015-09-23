@@ -8,7 +8,8 @@ network-bytestring:
   skip: true
 HsOpenSSL:
   # https://github.com/phonohawk/HsOpenSSL/issues/36
-  allow-newer: false
+  extra-flags:
+    - "-f-fast-bignum"
   apt-packages:
     - libssl-dev
 libxml:
@@ -17,11 +18,57 @@ libxml:
   apt-packages:
     - libxml2-dev
 tar:
+  # TODO: old-time flag default should be False
   extra-flags:
     - "-f-old-time"
 zlib:
   apt-packages:
     - zlib1g-dev
+  # https://github.com/haskell/zlib/issues/2
+  skip-tests: true
+hashable:
+  # Pending new release, https://github.com/tibbe/hashable/pull/102
+  skip-benchmarks: true
+vector:
+  # TODO: GHC in docker runs out of memory
+  skip-tests: true
+cryptohash:
+  skip-benchmarks: true
+HTTP:
+  # Requires an old version of WAI and Warp for tests
+  expected-test-failure: true
+aeson:
+  # Pending new release, https://github.com/bos/aeson/pull/286
+  skip-tests: true
+attoparsec:
+  # https://github.com/bos/attoparsec/pull/107
+  skip-benchmarks: true
+scientific:
+  # TODO: verify
+  skip-benchmarks: true
+hastache:
+  # https://github.com/lymar/hastache/issues/47
+  skip-tests: true
+http-client-tls:
+  # uncaught exception: HttpException (FailedConnectionException2 "httpbin.org" 443 True getProtocolByName: does not exist (no such protocol name: tcp))
+  skip-tests: true
+http2:
+  # https://github.com/kazu-yamamoto/http2/issues/4
+  skip-tests: true
+simple-sendfile:
+  # https://github.com/kazu-yamamoto/simple-sendfile/pull/10
+  skip-tests: true
+statistics:
+  # TODO
+  skip-tests: true
+streaming-commons:
+  # https://github.com/fpco/streaming-commons/issues/25
+  skip-tests: true
+warp:
+  # TODO
+  skip-tests: true
+wreq:
+  skip-tests: true
 pcre-light:
   apt-packages:
     - libpcre3-dev
