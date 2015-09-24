@@ -229,10 +229,16 @@ getDescInfo gpd = DescInfo
     p = packageDescription gpd
     pi'@(PackageIdentifier (PackageName name) _) = package p
 
+depToSingletonMap :: Dependency -> Map.Map PackageName VersionRange
+depToSingletonMap (Dependency pn vr) = Map.singleton pn vr
+
+combineDependencies :: [Dependency] -> [Dependency]
+combineDependencies = fmap (uncurry Dependency) .  Map.toList . Map.map simplifyVersionRange . Map.unionsWith unionVersionRanges . fmap depToSingletonMap
+
 getDeps :: GenericPackageDescription -> [Dependency]
 getDeps x = getLibDeps x ++ concat
-    [ concatMap (condTreeAllConstraints . snd) (condTestSuites x)
-    , concatMap (condTreeAllConstraints . snd) (condBenchmarks x)
+    [ combineDependencies $ concatMap (condTreeAllConstraints . snd) (condTestSuites x)
+    , combineDependencies $ concatMap (condTreeAllConstraints . snd) (condBenchmarks x)
     ]
 
 condTreeAllConstraints :: Monoid c => CondTree v c a -> c
@@ -243,8 +249,8 @@ deriving instance Foldable (CondTree v c)
 
 -- Count executables too
 getLibDeps :: GenericPackageDescription -> [Dependency]
-getLibDeps gpd = maybe [] condTreeAllConstraints (condLibrary gpd) ++ concatMap (condTreeAllConstraints . snd) (condExecutables gpd)
---  where getLibDeps' = foldMap (targetBuildDepends . libBuildInfo) 
+getLibDeps gpd = combineDependencies $ maybe [] (condTreeAllConstraints) (condLibrary gpd)
+                 ++ combineDependencies (concatMap (condTreeAllConstraints . snd) (condExecutables gpd))
 
 checkDeps :: Newest -> DescInfo
           -> (PackageName, Version, CheckDepsRes)

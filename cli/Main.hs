@@ -21,7 +21,6 @@ import           Data.Monoid
 import           Data.Traversable
 import           Data.Version
 import           Data.Yaml
-import           Distribution.PackDeps
 import           Distribution.Package
 import           Prelude hiding (elem, all, notElem)
 import           System.Directory
@@ -29,6 +28,7 @@ import           System.FilePath
 import           System.IO (stderr, hPutStrLn)
 
 import qualified Bourne
+import           Distribution.PackDeps
 
 import           Debug.Trace
 
