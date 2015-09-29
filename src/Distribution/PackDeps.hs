@@ -26,11 +26,6 @@ OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 -}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGuAGE StandaloneDeriving #-}
-{-# OPTIONS_GHC -fno-warn-orphans  #-}
-
-{-# LANGUAGE FlexibleInstances #-}
 module Distribution.PackDeps
     ( -- * Data types
       Newest
@@ -69,7 +64,6 @@ import Data.Time (UTCTime (UTCTime), addUTCTime)
 import Data.Maybe (mapMaybe, catMaybes)
 import Control.Exception (throw)
 import Data.Monoid
-import Data.Foldable hiding (maximum, concat, concatMap, foldl')
 
 import Distribution.Package
 import Distribution.PackageDescription
@@ -97,7 +91,7 @@ import GHC.Generics (Generic)
 import Data.Binary.Orphans
 import Data.Binary.Tagged hiding (Version)
 
-import Debug.Trace
+import NoLimits.Orphans ()
 
 loadNewest :: IO Newest
 loadNewest = do
@@ -245,8 +239,6 @@ condTreeAllConstraints :: Monoid c => CondTree v c a -> c
 condTreeAllConstraints tree = condTreeConstraints tree <> mconcat (fmap r $ condTreeComponents tree)
   where r (_, con, alt) = condTreeAllConstraints con <> maybe mempty condTreeAllConstraints alt
 
-deriving instance Foldable (CondTree v c)
-
 -- Count executables too
 getLibDeps :: GenericPackageDescription -> [Dependency]
 getLibDeps gpd = combineDependencies $ maybe [] (condTreeAllConstraints) (condLibrary gpd)
@@ -354,23 +346,3 @@ diName =
 
 -- Orphans
 
-deriving instance Generic Version
-deriving instance Generic VersionRange
-deriving instance Generic Dependency
-deriving instance Generic PackageName
-deriving instance Generic PackageIdentifier
-
-instance HasStructuralInfo Version
-instance HasStructuralInfo VersionRange where structuralInfo _ = NominalType "VersionRange"
-instance HasStructuralInfo Dependency where structuralInfo _ = NominalType "Dependency"
-instance HasStructuralInfo PackageName
-instance HasStructuralInfo PackageIdentifier
-
-instance Binary Version
-instance Binary VersionRange
-instance Binary Dependency
-instance Binary PackageName
-instance Binary PackageIdentifier
-
-instance HasSemanticVersion Version
-instance HasSemanticVersion (Version, [(String, VersionRange)])

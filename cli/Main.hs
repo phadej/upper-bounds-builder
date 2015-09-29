@@ -1,16 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RecordWildCards #-}
 module Main (main) where
 
 -- TODO: skip-benchmarks
 -- TODO: expected-test-failure
 
-import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
-import           Data.Aeson
-import           Data.Binary.Orphans
-import           Data.Binary.Tagged
+import           Control.Monad.Writer.Strict
+import           Data.Bifunctor
+import           Data.Binary.Tagged.Extra
 import           Data.Foldable
 import           Data.Function (on)
 import           Data.List as L (sort, sortBy, partition)
@@ -20,115 +21,77 @@ import           Data.Maybe (fromMaybe)
 import           Data.Monoid
 import           Data.Traversable
 import           Data.Version
-import           Data.Yaml
+import           Data.Yaml.Extra
+import           Development.Shake
+import           Distribution.Extra
 import           Distribution.Package
+import           Options.Applicative as O
+import           Path
 import           Prelude hiding (elem, all, notElem)
 import           System.Directory
-import           System.FilePath
-import           System.IO (stderr, hPutStrLn)
+import           System.FilePath hiding ((</>))
+import           System.IO (stderr, hPutStrLn, hPutStr)
 
 import qualified Bourne
 import           Distribution.PackDeps
 
+import           NoLimits.CheckDeps
+import           NoLimits.Options
+import           NoLimits.Plan
+import           NoLimits.Setup
+import           NoLimits.Types
+
 import           Debug.Trace
 
-cached :: (Binary a, HasStructuralInfo a, HasSemanticVersion a) => FilePath -> IO a -> IO a
-cached path mx = do
-  e <- taggedDecodeFileOrFail path `catch` onIOError
-  case e of
-    Right x -> return x
-    Left _  -> do print ("Error decoding " ++ path)
-                  x <- mx
-                  createDirectoryIfMissing True $ takeDirectory path
-                  taggedEncodeFile path x
-                  return x
-  where
-    onIOError :: IOError -> IO (Either a b)
-    onIOError _ = print ("Error loading " ++ path) >> return (Left undefined)
-
-decodeFileThrow :: (MonadThrow m, MonadIO m) => FromJSON a => FilePath -> m a
-decodeFileThrow path = do
-  e <- liftIO $ decodeFileEither path
-  case e of
-    Right x   -> return x
-    Left exc  -> throwM exc
-
-lookupPackageConfig :: String -> Map String PackageConfig -> PackageConfig
-lookupPackageConfig name m = fromMaybe defPackageConfig (Map.lookup name m)
-
-type PackageConfigs = Map String PackageConfig
-
-type CheckDeps = Newest -> DescInfo -> (PackageName, Data.Version.Version, CheckDepsRes)
-
-checkDepsCli :: CheckDeps -> Newest -> DescInfo -> IO ()
-checkDepsCli cd newest di =
-    case cd newest di of
-        (_, _, AllNewest) -> return ()
-        (PackageName pn, v, WontAccept p _) -> do
-           hPutStrLn stderr $ mconcat
-              [ pn
-              , "-"
-              , showVersion v
-              , ": Cannot accept the following packages"
-              ]
-           flip traverse_ p $ \(x, y) -> hPutStrLn stderr $ "- " <> x <> "-" <> y
+optionParser :: O.Parser (IO ())
+optionParser = subparser $ mconcat
+  [ O.command "setup" $ info (helper <*> (cmdSetup <$> setupOptsParser)) $ progDesc "Run setup commands"
+  ]
 
 main :: IO ()
-main = do
+main = join (execParser opts)
+  where
+    opts = info (helper <*> optionParser)
+      ( fullDesc
+     <> header "upper-bounds-builder - building without limits" )
+
+
+cmdBuild :: BuildOpts -> IO ()
+cmdBuild bo = do
   pkgcfg <- decodeFileThrow "config.yaml" :: IO PackageConfigs
-  newest <- cached ".cache/newest" loadNewest
-  -- reverses <- cached ".cache/reverses" (return (getReverses newest))
-  let packageInput = Map.keys pkgcfg
-  case traverse (flip Map.lookup newest >=> piDesc) packageInput of
-    Nothing  -> print $ "not such packages: " ++ show packageInput
-    Just dis -> do
-      let skippable = fst <$> filter (pcSkip . snd) (Map.toList pkgcfg)
-      let alldeps = removeUnexisting newest skippable . deepDeps newest $ dis -- Consider all dependencies!
-      let buildOrderDeps = buildOrder alldeps
-      let alphaOrderDeps = sortBy (compare `on` packageIdentifierName . diPackage) alldeps
-      -- Print package closure
-      hPutStrLn stderr "Package to be built:"
-      traverse_ (hPutStrLn stderr) . sort . fmap (packageIdentifierName . diPackage) $ alldeps
-      -- Check upper bounds
-      hPutStrLn stderr "---"
-      traverse_ (checkDepsCli checkDeps newest) alldeps
-      -- Output test build script
-      putStrLn . Bourne.showScript $ do
-        let aptPkgs = fmap getAptPackage . Prelude.concatMap pcAptPackages . Map.elems $ pkgcfg
-        Bourne.cmd "set" ["-ex"]
-        -- Install system dependencies
-        Bourne.test (Bourne.fileNotExists aptGetInstallLog) $ do
-          Bourne.touch aptGetInstallLog
-          Bourne.cmd "apt-get" $ words "-yq --no-install-suggests --no-install-recommends --force-yes install" ++ aptPkgs ++ ["2>&1", ">", aptGetInstallLog]
-        -- Create directories
-        Bourne.mkdirp "/app/src"
-        Bourne.mkdirp "/app/log"
-        Bourne.mkdirp "/app/dist"
-        -- Download packages
-        Bourne.cd "/app/src"
-        traverse_ downloadScript alphaOrderDeps
-        -- Install
-        traverse_ (installScript pkgcfg) buildOrderDeps
-        -- Test
-        traverse_ (testScript pkgcfg) alphaOrderDeps
+  newest <- cached (boPath bo </> $(mkRelFile "cache/newest")) loadNewest
+  alldeps <- plan newest pkgcfg
+
+  let buildOrderDeps = buildOrder alldeps
+  let alphaOrderDeps = sortBy (compare `on` packageIdentifierName . diPackage) alldeps
+  -- Print package closure
+  hPutStrLn stderr "Package to be built:"
+  traverse_ (hPutStrLn stderr) . sort . fmap (packageIdentifierName . diPackage) $ alldeps
+  -- Check upper bounds
+  hPutStr stderr "---"
+  hPutStr stderr $ checkDepsCli newest alldeps
+  -- Output test build script
+  putStrLn . Bourne.showScript $ do
+    let aptPkgs = fmap getAptPackage . Prelude.concatMap pcAptPackages . Map.elems $ pkgcfg
+    Bourne.cmd "set" ["-ex"]
+    -- Create directories
+    Bourne.mkdirp "/app/src"
+    Bourne.mkdirp "/app/log"
+    Bourne.mkdirp "/app/dist"
+    -- Install system dependencies
+    Bourne.test (Bourne.fileNotExists aptGetInstallLog) $ do
+      Bourne.touch aptGetInstallLog
+      Bourne.cmd "apt-get" $ words "-yq --no-install-suggests --no-install-recommends --force-yes install" ++ aptPkgs ++ ["2>&1", ">", aptGetInstallLog]
+    -- Download packages
+    Bourne.cd "/app/src"
+    traverse_ downloadScript alphaOrderDeps
+    -- Install
+    traverse_ (installScript pkgcfg) buildOrderDeps
+    -- Test
+    traverse_ (testScript pkgcfg) alphaOrderDeps
 
 aptGetInstallLog :: FilePath
 aptGetInstallLog = "/app/log/apt-get-install.log"
-
-removeUnexisting :: Newest -> [String] -> [DescInfo] -> [DescInfo]
-removeUnexisting newest toSkip = map filterDeps . filter pDescInfo
-  where pDescInfo di     = pName (packageIdentifierName . diPackage $ di)
-        filterDeps di    = di { diDeps     = filter (pSelf di) . filter pDependency $ diDeps di
-                              , diLibDeps  = filter (pSelf di) . filter pDependency $ diLibDeps di
-                              }
-        pSelf di dep     = packageIdentifierName (diPackage di) /= dependencyName dep
-        pDependency dep  = pName (dependencyName dep)
-        pName name       = Map.member name newest && notElem name toSkip'
-        toSkip'          = alwaysPresent ++ toSkip
-
--- | See <https://ghc.haskell.org/trac/ghc/wiki/Commentary/Libraries/VersionHistory>
-alwaysPresent :: [String]
-alwaysPresent = words "Cabal Win32 array base bin-package-db binary bytestring containers deepseq directory filepath ghc ghc-prim haskeline hoopl hpc integer-gmp pretty process rts template-haskell terminfo time transformers unix xhtml"
 
 buildOrder :: [DescInfo] -> [DescInfo]
 buildOrder = go []
@@ -150,13 +113,14 @@ downloadScript di = Bourne.test (Bourne.dirNotExists namever) (Bourne.cmd "cabal
   where namever = showPackageIdentifier . diPackage $ di
 
 installScript :: PackageConfigs -> DescInfo -> Bourne.Script
-installScript pkgcfg di = Bourne.test (Bourne.dirNotExists distDir) $ do
-                            Bourne.cd srcDir
-                            Bourne.mkdirp logDir
-                            cabalCmd "configure" distDir (logDir <> "/configure.log") $ allowNewer ++ extraFlags
-                            cabalCmd "build"     distDir (logDir <> "/build.log")     $ []
-                            cabalCmd "copy"      distDir (logDir <> "/copy.log")      $ []
-                            cabalCmd "register"  distDir (logDir <> "/register.log")  $ []
+installScript pkgcfg di =
+  Bourne.test (Bourne.dirNotExists distDir) $ do
+    Bourne.cd srcDir
+    Bourne.mkdirp logDir
+    cabalCmd "configure" distDir (logDir <> "/configure.log") $ allowNewer ++ extraFlags
+    cabalCmd "build"     distDir (logDir <> "/build.log")     $ []
+    cabalCmd "copy"      distDir (logDir <> "/copy.log")      $ []
+    cabalCmd "register"  distDir (logDir <> "/register.log")  $ []
   where namever    = showPackageIdentifier . diPackage $ di
         name       = packageIdentifierName . diPackage $ di
         srcDir     = "/app/src/" <> namever
@@ -198,54 +162,5 @@ cabalCmd :: String -> FilePath -> FilePath -> [String] -> Bourne.Script
 cabalCmd cmd buildDir logFile params = Bourne.cmd "cabal" $ [ cmd, buildDirFlag, "-v2" ] ++ params ++ ["2>&1", ">", logFile]
   where buildDirFlag = "--builddir=" <> buildDir
 
--- -> String functions
 
-dependencyName :: Dependency -> String
-dependencyName (Dependency (PackageName name) _) = name
 
-packageIdentifierName :: PackageIdentifier -> String
-packageIdentifierName (PackageIdentifier (PackageName name) _) = name
-
-showPackageIdentifier :: PackageIdentifier -> String
-showPackageIdentifier (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version
-
--- Config
-
-instance FromJSON PackageName where
-  parseJSON = fmap PackageName . parseJSON
-
-newtype AptPackage = AptPackage { getAptPackage :: String }
-  deriving (Eq, Ord, Show)
-
-instance FromJSON AptPackage where
-  parseJSON = fmap AptPackage . parseJSON
-
-newtype CliFlag = CliFlag { getCliFlag :: String }
-  deriving (Eq, Ord, Show)
-
-instance FromJSON CliFlag where
-  parseJSON = fmap CliFlag . parseJSON
-
-data PackageConfig = PackageConfig
-  { pcSkip           :: Bool
-  , pcAllowNewer     :: Bool
-  , pcExtraFlags     :: [CliFlag]
-  , pcAptPackages    :: [AptPackage]
-  , pcSkipTests      :: Bool
-  , pcSkipBenchmarks :: Bool
-  , pcExpectTestFail :: Bool
-  }
-  deriving (Eq, Ord, Show)
-
-defPackageConfig :: PackageConfig
-defPackageConfig = PackageConfig False True [] [] False False False
-
-instance FromJSON PackageConfig where
-  parseJSON = withObject "Package config" $ \obj ->
-    PackageConfig <$> obj .:? "skip" .!= False
-                  <*> obj .:? "allow-newer" .!= True
-                  <*> obj .:? "extra-flags" .!= []
-                  <*> obj .:? "apt-packages" .!= []
-                  <*> obj .:? "skip-tests" .!= False
-                  <*> obj .:? "skip-benchmarks" .!= False
-                  <*> obj .:? "expected-test-failure" .!= False

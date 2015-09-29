@@ -69,6 +69,7 @@ warp:
   skip-tests: true
 wreq:
   skip-tests: true
+zero: {}
 pcre-light:
   apt-packages:
     - libpcre3-dev

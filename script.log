@@ -1,0 +1,263 @@
+Package to be built:
+BoundedChan
+ChasingBottoms
+Glob
+HTTP
+HUnit
+HsOpenSSL
+MonadCatchIO-transformers
+PSQueue
+QuickCheck
+StateVar
+abstract-deque
+abstract-deque-tests
+abstract-par
+adjunctions
+aeson
+aeson-pretty
+ansi-terminal
+ansi-wl-pprint
+appar
+asn1-encoding
+asn1-parse
+asn1-types
+async
+atomic-primops
+attoparsec
+attoparsec-enumerator
+auto-update
+base-compat
+base-orphans
+base16-bytestring
+base64-bytestring
+bifunctors
+blaze-builder
+blaze-builder-enumerator
+blaze-html
+blaze-markup
+byteable
+byteorder
+bytestring-builder
+bytestring-mmap
+case-insensitive
+cassava
+cereal
+chaselev-deque
+cmdargs
+comonad
+comonads-fd
+conduit
+conduit-extra
+connection
+contravariant
+cookie
+cpphs
+cpu
+criterion
+crypto-api
+cryptohash
+cryptonite
+data-default
+data-default-class
+data-default-instances-base
+data-default-instances-containers
+data-default-instances-dlist
+data-default-instances-old-locale
+distributive
+dlist
+doctest
+entropy
+enumerator
+erf
+exceptions
+extensible-exceptions
+extra
+fingertree
+fingertree-psqueue
+free
+generic-deriving
+ghc-paths
+hans
+hashable
+hashmap
+haskell-src-exts
+hastache
+hex
+hlint
+hostname
+hourglass
+hscolour
+hspec
+hspec-core
+hspec-discover
+hspec-expectations
+hspec-meta
+http-client
+http-client-tls
+http-date
+http-types
+http2
+httpd-shed
+ieee754
+iproute
+kan-extensions
+language-haskell-extract
+lazy-csv
+lens
+lens-aeson
+libxml
+lifted-base
+logict
+math-functions
+memory
+mersenne-random-pure64
+mime-types
+mmorph
+monad-control
+monad-par
+monad-par-extras
+monad-peel
+monadLib
+monads-tf
+mtl
+mwc-random
+nanospec
+nats
+network
+network-info
+network-uri
+old-locale
+old-time
+optparse-applicative
+packdeps
+parallel
+parsec
+pcre-light
+pem
+polyparse
+prelude-extras
+primitive
+profunctors
+psqueues
+pureMD5
+quickcheck-instances
+quickcheck-io
+quickcheck-unicode
+random
+reflection
+regex-base
+regex-posix
+regex-tdfa-rc
+resourcet
+safe
+scientific
+semigroupoids
+semigroups
+setenv
+silently
+simple-reflect
+simple-sendfile
+siphash
+smallcheck
+snap-core
+snap-server
+socks
+split
+statistics
+stm
+streaming-commons
+stringbuilder
+syb
+tagged
+tar
+tasty
+tasty-ant-xml
+tasty-golden
+tasty-hunit
+tasty-kat
+tasty-quickcheck
+tasty-smallcheck
+temporary
+temporary-rc
+test-framework
+test-framework-hunit
+test-framework-quickcheck2
+test-framework-th
+text
+tf-random
+time-locale-compat
+tls
+transformers-base
+transformers-compat
+unbounded-delays
+uniplate
+unix-compat
+unordered-containers
+utf8-string
+uuid
+uuid-types
+vault
+vector
+vector-algorithms
+vector-binary-instances
+vector-th-unbox
+void
+wai
+warp
+word8
+wreq
+x509
+x509-store
+x509-system
+x509-validation
+xml
+zero
+zlib
+zlib-bindings
+zlib-enum
+---
+HTTP-4000.2.20: Cannot accept the following packages
+- HUnit-1.3.0.0
+- warp-3.1.3
+ChasingBottoms-1.3.0.13: Cannot accept the following packages
+- syb-0.6
+test-framework-0.8.1.1: Cannot accept the following packages
+- QuickCheck-2.8.1
+scientific-0.3.3.8: Cannot accept the following packages
+- criterion-1.1.0.0
+- tasty-0.11
+transformers-compat-0.4.0.4: Cannot accept the following packages
+- mtl-2.2.1
+parsec-3.1.9: Cannot accept the following packages
+- HUnit-1.3.0.0
+exceptions-0.8.0.2: Cannot accept the following packages
+- QuickCheck-2.8.1
+case-insensitive-1.2.0.4: Cannot accept the following packages
+- HUnit-1.3.0.0
+- criterion-1.1.0.0
+lifted-base-0.2.3.6: Cannot accept the following packages
+- HUnit-1.3.0.0
+- criterion-1.1.0.0
+- monad-peel-0.2
+zlib-0.6.1.1: Cannot accept the following packages
+- HUnit-1.3.0.0
+- tasty-0.11
+- tasty-hunit-0.9.2
+HsOpenSSL-0.11.1.1: Cannot accept the following packages
+- HUnit-1.3.0.0
+blaze-html-0.8.1.0: Cannot accept the following packages
+- HUnit-1.3.0.0
+blaze-markup-0.7.0.2: Cannot accept the following packages
+- HUnit-1.3.0.0
+tar-0.4.2.1: Cannot accept the following packages
+- tasty-0.11
+zlib-enum-0.2.3.1: Cannot accept the following packages
+- QuickCheck-2.8.1
+- test-framework-0.8.1.1
+- test-framework-quickcheck2-0.3.0.3
+uuid-1.3.11: Cannot accept the following packages
+- HUnit-1.3.0.0
+- tasty-0.11
+uuid-types-1.0.2: Cannot accept the following packages
+- HUnit-1.3.0.0
+- tasty-0.11

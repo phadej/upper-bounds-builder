@@ -26,10 +26,16 @@ dependencies:
   - directory    >= 1.0
   - filepath     >= 1.1
   - pretty
+  - bifunctors
   - binary
+  - mtl
+  - dlist
   - binary-orphans
   - binary-tagged
   - exceptions
+  - path
+  - shake
+  - optparse-applicative
 
 library:
   source-dirs: src
