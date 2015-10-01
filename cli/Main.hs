@@ -9,6 +9,7 @@ module Main (main) where
 import           Control.Monad
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
+import           Control.Monad.Reader
 import           Control.Monad.Writer.Strict
 import           Data.Bifunctor
 import           Data.Binary.Tagged.Extra
@@ -40,6 +41,7 @@ import           NoLimits.Options
 import           NoLimits.Plan
 import           NoLimits.Setup
 import           NoLimits.Types
+import           NoLimits.Paths
 
 import           Debug.Trace
 
@@ -54,6 +56,7 @@ main = join (execParser opts)
     opts = info (helper <*> optionParser)
       ( fullDesc
      <> header "upper-bounds-builder - building without limits" )
+
 
 
 cmdBuild :: BuildOpts -> IO ()
@@ -110,7 +113,7 @@ buildOrder = go []
 
 downloadScript :: DescInfo -> Bourne.Script
 downloadScript di = Bourne.test (Bourne.dirNotExists namever) (Bourne.cmd "cabal" ["get", "-v0", namever])
-  where namever = showPackageIdentifier . diPackage $ di
+  where namever = packageIdentifierString . diPackage $ di
 
 installScript :: PackageConfigs -> DescInfo -> Bourne.Script
 installScript pkgcfg di =
@@ -121,7 +124,7 @@ installScript pkgcfg di =
     cabalCmd "build"     distDir (logDir <> "/build.log")     $ []
     cabalCmd "copy"      distDir (logDir <> "/copy.log")      $ []
     cabalCmd "register"  distDir (logDir <> "/register.log")  $ []
-  where namever    = showPackageIdentifier . diPackage $ di
+  where namever    = packageIdentifierString . diPackage $ di
         name       = packageIdentifierName . diPackage $ di
         srcDir     = "/app/src/" <> namever
         distDir    = "/app/dist/" <> namever
@@ -148,7 +151,7 @@ testScript' pkgcfg di = Bourne.test (Bourne.fileNotExists testLogFile) $ do
                           Bourne.test (Bourne.dirNotExists "dist") $ Bourne.cmd "ln" ["-s", distDir, "dist"]
                           cabalCmd "test"      distDir testLogFile                       $ []
                                    -- TODO: remove dist link (test -h)
-  where namever    = showPackageIdentifier . diPackage $ di
+  where namever    = packageIdentifierString . diPackage $ di
         name       = packageIdentifierName . diPackage $ di
         srcDir     = "/app/src/" <> namever
         distDir    = "/app/dist/" <> namever

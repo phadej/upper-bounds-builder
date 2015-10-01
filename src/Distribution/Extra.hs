@@ -9,5 +9,5 @@ dependencyName (Dependency (PackageName name) _) = name
 packageIdentifierName :: PackageIdentifier -> String
 packageIdentifierName (PackageIdentifier (PackageName name) _) = name
 
-showPackageIdentifier :: PackageIdentifier -> String
-showPackageIdentifier (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version
+packageIdentifierString :: PackageIdentifier -> String
+packageIdentifierString (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version
