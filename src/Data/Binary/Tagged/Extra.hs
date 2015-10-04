@@ -4,20 +4,21 @@ module Data.Binary.Tagged.Extra (
   ) where
 
 import Control.Monad.Catch
+import Control.Monad.IO.Class
 import Data.Binary
 import Data.Binary.Tagged
 import Path
 import System.Directory
 
-cached :: (Binary a, HasStructuralInfo a, HasSemanticVersion a) => Path Abs File -> IO a -> IO a
+cached :: (Binary a, HasStructuralInfo a, HasSemanticVersion a, MonadIO m) => Path Abs File -> m a -> m a
 cached path mx = do
-  e <- tryIO $ taggedDecodeFileOrFail (toFilePath path)
+  e <- liftIO $ tryIO $ taggedDecodeFileOrFail (toFilePath path)
   case e of
     Right (Right x)  -> return x
-    _                -> do print ("Error decoding " ++ show path)
+    _                -> do -- print ("Error decoding " ++ show path)
                            x <- mx
-                           createDirectoryIfMissing True $ toFilePath $ Path.parent path
-                           taggedEncodeFile (toFilePath path) x
+                           liftIO $ createDirectoryIfMissing True $ toFilePath $ Path.parent path
+                           liftIO $ taggedEncodeFile (toFilePath path) x
                            return x
 
 tryIO :: IO a -> IO (Either IOError a)

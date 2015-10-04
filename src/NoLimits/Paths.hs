@@ -19,6 +19,9 @@ getLogDir env = getBuildRootDir env </> $(mkRelDir "log")
 askLogDir :: (MonadReader env m, HasBuildRootDir env) => m (Path Abs Dir)
 askLogDir = reader getLogDir
 
+askSourceDir :: (MonadReader env m, HasSourceDir env) => m (Path Abs Dir)
+askSourceDir = reader getSourceDir
+
 -- TODO: use package identifier?
 askPackageLogDir :: (MonadReader env m, HasBuildRootDir env, MonadThrow m) => PackageIdentifier -> m (Path Abs Dir)
 askPackageLogDir pi = do

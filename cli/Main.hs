@@ -23,7 +23,6 @@ import           Data.Monoid
 import           Data.Traversable
 import           Data.Version
 import           Data.Yaml.Extra
-import           Development.Shake
 import           Distribution.Extra
 import           Distribution.Package
 import           Options.Applicative as O
@@ -36,18 +35,20 @@ import           System.IO (stderr, hPutStrLn, hPutStr)
 import qualified Bourne
 import           Distribution.PackDeps
 
+import           NoLimits.Build
 import           NoLimits.CheckDeps
 import           NoLimits.Options
+import           NoLimits.Paths
 import           NoLimits.Plan
 import           NoLimits.Setup
 import           NoLimits.Types
-import           NoLimits.Paths
 
 import           Debug.Trace
 
 optionParser :: O.Parser (IO ())
 optionParser = subparser $ mconcat
   [ O.command "setup" $ info (helper <*> (cmdSetup <$> setupOptsParser)) $ progDesc "Run setup commands"
+  , O.command "build" $ info (helper <*> (cmdBuildTmp <$> setupOptsParser)) $ progDesc "Run the build"
   ]
 
 main :: IO ()
@@ -57,7 +58,17 @@ main = join (execParser opts)
       ( fullDesc
      <> header "upper-bounds-builder - building without limits" )
 
-
+cmdBuildTmp :: SetupOpts -> IO ()
+cmdBuildTmp SetupOpts {..} = do
+  pkgcfg <- decodeFileThrow "config.yaml" :: IO PackageConfigs
+  newest <- cached (soPath </> $(mkRelFile "cache/newest")) loadNewest
+  alldeps <- plan newest pkgcfg
+  makeBuild benv $ sortBy (compare `on` packageIdentifierName . diPackage) alldeps
+  where
+    benv = BuildEnv
+      { beBuildRootDir = soPath
+      , beSourceDir    = soPath </> $(mkRelDir "src")
+      }
 
 cmdBuild :: BuildOpts -> IO ()
 cmdBuild bo = do

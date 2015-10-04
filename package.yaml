@@ -17,6 +17,7 @@ dependencies:
   - bytestring >=0.9
   - text >=0.7
   - aeson
+  - aeson-extra >=0.2
   - yaml
   - transformers
   - split >= 0.1.2.3
@@ -26,6 +27,7 @@ dependencies:
   - directory    >= 1.0
   - filepath     >= 1.1
   - pretty
+  - monad-logger
   - bifunctors
   - binary
   - mtl
@@ -34,7 +36,8 @@ dependencies:
   - binary-tagged
   - exceptions
   - path
-  - shake
+  - process
+  - process-extras
   - optparse-applicative
 
 library:

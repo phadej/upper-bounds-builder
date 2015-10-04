@@ -33,6 +33,7 @@ library
     , bytestring >=0.9
     , text >=0.7
     , aeson
+    , aeson-extra >=0.2
     , yaml
     , transformers
     , split >= 0.1.2.3
@@ -42,6 +43,7 @@ library
     , directory    >= 1.0
     , filepath     >= 1.1
     , pretty
+    , monad-logger
     , bifunctors
     , binary
     , mtl
@@ -50,7 +52,8 @@ library
     , binary-tagged
     , exceptions
     , path
-    , shake
+    , process
+    , process-extras
     , optparse-applicative
   exposed-modules:
       Bourne
@@ -58,6 +61,8 @@ library
       Data.Yaml.Extra
       Distribution.Extra
       Distribution.PackDeps
+      NoLimits.Batch.Job
+      NoLimits.Batch.SeqEval
       NoLimits.Build
       NoLimits.CheckDeps
       NoLimits.Options
@@ -66,7 +71,9 @@ library
       NoLimits.Plan
       NoLimits.Setup
       NoLimits.Types
+      NoLimits.Types.BuildStep
       NoLimits.Types.PackageConfig
+      NoLimits.Types.Result
   default-language: Haskell2010
 
 executable upper-bounds-builder
@@ -80,6 +87,7 @@ executable upper-bounds-builder
     , bytestring >=0.9
     , text >=0.7
     , aeson
+    , aeson-extra >=0.2
     , yaml
     , transformers
     , split >= 0.1.2.3
@@ -89,6 +97,7 @@ executable upper-bounds-builder
     , directory    >= 1.0
     , filepath     >= 1.1
     , pretty
+    , monad-logger
     , bifunctors
     , binary
     , mtl
@@ -97,7 +106,8 @@ executable upper-bounds-builder
     , binary-tagged
     , exceptions
     , path
-    , shake
+    , process
+    , process-extras
     , optparse-applicative
     , upper-bounds-builder
   default-language: Haskell2010
