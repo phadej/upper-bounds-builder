@@ -15,7 +15,9 @@ cmdSetup SetupOpts {..} = do
   mkdirp $ soPath </> $(mkRelDir "cache")
   mkdirp $ soPath </> $(mkRelDir "log")
   mkdirp $ soPath </> $(mkRelDir "src")
-  mkdirp $ soPath </> $(mkRelDir "pkgconf")
+  -- ghc-pkg init ../pkgdb
+  mkdirp $ soPath </> $(mkRelDir "pkgdb")
+  mkdirp $ soPath </> $(mkRelDir "install")
   mkdirp $ soPath </> $(mkRelDir "dist/build")
   mkdirp $ soPath </> $(mkRelDir "dist/test")
   mkdirp $ soPath </> $(mkRelDir "dist/bench")

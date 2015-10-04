@@ -42,6 +42,7 @@ import           NoLimits.Paths
 import           NoLimits.Plan
 import           NoLimits.Setup
 import           NoLimits.Types
+import           NoLimits.Types.BuildInfo
 
 import           Debug.Trace
 
@@ -63,13 +64,14 @@ cmdBuildTmp SetupOpts {..} = do
   pkgcfg <- decodeFileThrow "config.yaml" :: IO PackageConfigs
   newest <- cached (soPath </> $(mkRelFile "cache/newest")) loadNewest
   alldeps <- plan newest pkgcfg
-  makeBuild benv $ sortBy (compare `on` packageIdentifierName . diPackage) alldeps
+  makeBuild benv $ sortBy (compare `on` biPackage) alldeps
   where
     benv = BuildEnv
       { beBuildRootDir = soPath
       , beSourceDir    = soPath </> $(mkRelDir "src")
       }
 
+{-
 cmdBuild :: BuildOpts -> IO ()
 cmdBuild bo = do
   pkgcfg <- decodeFileThrow "config.yaml" :: IO PackageConfigs
@@ -176,5 +178,5 @@ cabalCmd :: String -> FilePath -> FilePath -> [String] -> Bourne.Script
 cabalCmd cmd buildDir logFile params = Bourne.cmd "cabal" $ [ cmd, buildDirFlag, "-v2" ] ++ params ++ ["2>&1", ">", logFile]
   where buildDirFlag = "--builddir=" <> buildDir
 
-
+-}
 

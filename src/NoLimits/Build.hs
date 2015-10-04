@@ -4,12 +4,17 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
-module NoLimits.Build where
+{-# LANGUAGE DeriveDataTypeable #-}
+module NoLimits.Build (makeBuild, BuildEnv(..)) where
 
+import           Control.Applicative
 import           Control.Monad.Catch
 import           Control.Monad.Logger
 import           Control.Monad.Reader
+import           Data.Aeson (withObject)
 import           Data.ByteString as BS
+import           Data.Data (Typeable)
+import Data.List (intercalate)
 import qualified Data.Map as Map
 import           Data.Monoid
 import           Data.Set (Set)
@@ -18,11 +23,11 @@ import           Data.Text as T
 import           Data.Traversable
 import           Data.Yaml
 import           Distribution.Extra
-import           Distribution.PackDeps
 import           Distribution.Package
 import           Path
 import           System.Directory (createDirectoryIfMissing)
 import           System.Exit (ExitCode(ExitSuccess))
+import           System.FilePath (dropTrailingPathSeparator)
 import qualified System.Process as Process
 import           System.Process.ByteString (readCreateProcessWithExitCode)
 
@@ -30,6 +35,7 @@ import           NoLimits.Batch.Job
 import           NoLimits.Batch.SeqEval (evalBatch)
 import           NoLimits.Paths
 import           NoLimits.Types.BuildStep
+import           NoLimits.Types.BuildInfo
 import           NoLimits.Types.Result
 
 data BuildEnv = BuildEnv
@@ -44,8 +50,17 @@ instance HasBuildRootDir BuildEnv where
 instance HasSourceDir BuildEnv where
   getSourceDir = beSourceDir
 
-type Tag = (BuildStep, PackageIdentifier)
+data Tag = Tag !BuildStep !PackageIdentifier
+  deriving (Eq, Ord, Show)
 type Action = Job Tag (LoggingT IO) Result
+
+instance ToJSON Tag where
+  toJSON (Tag step name) = object [ "step" .= step, "package" .= name ]
+
+instance FromJSON Tag where
+  parseJSON = withObject "Tag" $ \obj -> 
+    Tag <$> obj .: "step"
+        <*> obj .: "package"
 
 -- | Run command
 command :: Path Abs Dir -- ^ workind directory
@@ -67,21 +82,29 @@ askLogFile step pkgId ext = do
   return $ logDir </> logFile
 
 showTag :: Tag -> Text
-showTag (step, pkgId) = T.pack $
+showTag (Tag step pkgId) = T.pack $
   buildStepString step <> " " <> packageIdentifierString pkgId
 
+data BuildError = BuildError
+  deriving (Show, Typeable)
+
+instance Exception BuildError
 
 genericStep :: (MonadReader env m, HasBuildRootDir env, MonadThrow m)
-            => Set Tag                                                       -- ^ Prerequisites
-            -> (PackageIdentifier -> IO (ExitCode, ByteString, ByteString))  -- ^ The action
-            -> Tag
+            => Set Tag                                -- ^ Prerequisites
+            -> IO (ExitCode, ByteString, ByteString)  -- ^ The action
+            -> BuildStep
+            -> PackageIdentifier
             -> m Action
-genericStep prereq action tag@(step, pkgId) = do
+genericStep prereq action step pkgId = do
   outFile <- askLogFile step pkgId "out"
   errFile <- askLogFile step pkgId "err"
   resFile <- askLogFile step pkgId "res"
   -- Actual action
-  let action'' = do (c, out, err) <- action pkgId
+  let action'' = do (c, out, err) <- action
+                    when (c /= ExitSuccess) $ do BS.putStr out
+                                                 BS.putStr err
+                                                 throwM BuildError
                     createDirectoryIfMissing True $ toFilePath $ parent outFile
                     BS.writeFile (toFilePath outFile) out
                     BS.writeFile (toFilePath errFile) err
@@ -104,20 +127,90 @@ genericStep prereq action tag@(step, pkgId) = do
   where exitCodeToResult ExitSuccess = ResultOk
         exitCodeToResult _           = errorResult
         errorResult                  = ResultError [(step, pkgId)]
+        tag                          = Tag step pkgId
 
 tryIO :: IO a -> IO (Either IOError a)
 tryIO = try
 
-stepGetAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => DescInfo -> m Action
+stepGetAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
 stepGetAction di = do
   sourceDir <- askSourceDir
-  let action pkgId = command sourceDir "cabal" ["get", "-v2", packageIdentifierString pkgId]
-  genericStep Set.empty action (StepGet, (diPackage di))
+  let action = command sourceDir "cabal" ["get", "-v2", packageIdentifierString pkgId]
+  genericStep Set.empty action StepGet pkgId
+  where pkgId = biPackage di
 
+simpleStepAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m)
+                 => BuildStep  -- ^ Previous step
+                 -> BuildStep  -- ^ This step
+                 -> String     -- ^ Cabal command
+                 -> BuildInfo
+                 -> m Action
+simpleStepAction prevStep currStep cabalCommand bi = do
+  pkgSourceDir <- askPackageSourceDir pkgId
+  pkgBuildDir  <- askPackageBuildDir pkgId
+  let args = [ cabalCommand
+             , "-v2"
+             , "--builddir=" <> toFilePathNoTrailingSlash pkgBuildDir
+             ]
+  let action = command pkgSourceDir "cabal" args
+  genericStep dependencies action currStep pkgId
+  where pkgId = biPackage bi
+        dependencies = Set.singleton $ Tag prevStep pkgId
 
+stepConfigureAction:: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
+stepConfigureAction bi = do
+  pkgSourceDir <- askPackageSourceDir pkgId
+  pkgBuildDir  <- askPackageBuildDir pkgId
+  installDir   <- askInstallDir
+  packageDbDir <- askPackageDbDir
+  let args = [ "configure"
+             , "-v2"
+             , "--allow-newer"
+             -- Build directory
+             , "--builddir=" <> toFilePathNoTrailingSlash pkgBuildDir
+             -- Package databases
+             , "--package-db=clear"
+             , "--package-db=global"
+             , "--package-db=" <> toFilePathNoTrailingSlash packageDbDir
+             -- Install directories
+             , "--libdir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "lib"))
+             , "--bindir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "bin"))
+             , "--datadir="    <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "share"))
+             , "--libexecdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "libexec"))
+             , "--sysconfdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "etc"))
+             , "--docdir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "doc"))
+             , "--htmldir="    <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "html"))
+             , "--haddockdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "haddock"))
+             ]
+  let action = command pkgSourceDir "cabal" args
+  genericStep dependencies action StepConfigure pkgId
+  where pkgId = biPackage bi
+        dependencies = Set.fromList $ fmap (Tag StepRegister) $ biLibDeps bi
 
-makeBuild :: BuildEnv -> [DescInfo] -> IO ()
+stepBuildAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
+stepBuildAction = simpleStepAction StepConfigure StepBuild "build"
+
+stepCopyAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
+stepCopyAction = simpleStepAction StepBuild StepCopy "copy"
+
+stepRegisterAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
+stepRegisterAction = simpleStepAction StepBuild StepRegister "register"
+
+-- TODO: Move to Path.Extra
+toFilePathNoTrailingSlash :: Path Abs Dir -> FilePath  
+toFilePathNoTrailingSlash = dropTrailingPathSeparator . toFilePath
+
+allActions :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m [Action]
+allActions bi = do
+  a0 <- stepGetAction bi
+  a1 <- stepConfigureAction bi
+  a2 <- stepBuildAction bi
+  a3 <- stepCopyAction bi
+  a4 <- stepRegisterAction bi
+  return [ a0, a1, a2, a3, a4 ]
+
+makeBuild :: BuildEnv -> [BuildInfo] -> IO ()
 makeBuild benv dis = do
-  jobs <- runReaderT (traverse stepGetAction dis) benv
+  jobs <- Prelude.concat <$> runReaderT (traverse allActions dis) benv
   res <- evalBatch (fmap (transformJobAction runStderrLoggingT) jobs)
   print $ Prelude.map snd $ Prelude.filter ((/= ResultOk) . snd) $ Map.toList res

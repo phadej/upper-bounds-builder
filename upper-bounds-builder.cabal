@@ -71,6 +71,7 @@ library
       NoLimits.Plan
       NoLimits.Setup
       NoLimits.Types
+      NoLimits.Types.BuildInfo
       NoLimits.Types.BuildStep
       NoLimits.Types.PackageConfig
       NoLimits.Types.Result

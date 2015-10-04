@@ -18,7 +18,13 @@ data BuildStep = StepGet
   deriving (Eq, Ord, Show, Read, Enum, Bounded)
 
 buildStepString :: BuildStep -> String
-buildStepString StepGet = "get"
+buildStepString StepGet             = "get"
+buildStepString StepConfigure       ="configure"
+buildStepString StepBuild           = "build"
+buildStepString StepCopy            = "copy"
+buildStepString StepRegister        = "register"
+buildStepString StepTestConfigure   = "test-configure"
+buildStepString StepBenchConfigure  = "bench-configure"
 buildStepString _ = error "stepSuffix: implement me"
 
 buildStepLookupList :: [(String, BuildStep)]

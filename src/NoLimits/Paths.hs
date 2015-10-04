@@ -22,9 +22,30 @@ askLogDir = reader getLogDir
 askSourceDir :: (MonadReader env m, HasSourceDir env) => m (Path Abs Dir)
 askSourceDir = reader getSourceDir
 
--- TODO: use package identifier?
+askInstallDir :: (MonadReader env m, HasBuildRootDir env) => m (Path Abs Dir)
+askInstallDir = do
+  buildRootDir <- reader getBuildRootDir
+  return $ buildRootDir </> $(mkRelDir "install")
+
+askPackageDbDir :: (MonadReader env m, HasBuildRootDir env) => m (Path Abs Dir)
+askPackageDbDir = do
+  buildRootDir <- reader getBuildRootDir
+  return $ buildRootDir </> $(mkRelDir "pkgdb") 
+
 askPackageLogDir :: (MonadReader env m, HasBuildRootDir env, MonadThrow m) => PackageIdentifier -> m (Path Abs Dir)
 askPackageLogDir pi = do
   logDir <- askLogDir
   packageDir <- parseRelDir (packageIdentifierString pi)
   return (logDir </> packageDir)
+
+askPackageSourceDir :: (MonadReader env m, HasSourceDir env, MonadThrow m) => PackageIdentifier -> m (Path Abs Dir) 
+askPackageSourceDir pi = do
+  sourceDir <- askSourceDir
+  packageDir <- parseRelDir (packageIdentifierString pi)
+  return (sourceDir </> packageDir)
+
+askPackageBuildDir :: (MonadReader env m, HasBuildRootDir env, MonadThrow m) => PackageIdentifier -> m (Path Abs Dir)
+askPackageBuildDir pi = do
+  buildRootDir <- reader getBuildRootDir
+  packageDir <- parseRelDir (packageIdentifierString pi)
+  return (buildRootDir </> $(mkRelDir "dist") </> packageDir)
