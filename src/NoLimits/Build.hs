@@ -14,7 +14,7 @@ import           Control.Monad.Reader
 import           Data.Aeson (withObject)
 import           Data.ByteString as BS
 import           Data.Data (Typeable)
-import Data.List (intercalate)
+import           Data.List (intercalate)
 import qualified Data.Map as Map
 import           Data.Monoid
 import           Data.Set (Set)
@@ -143,13 +143,14 @@ simpleStepAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, M
                  => BuildStep  -- ^ Previous step
                  -> BuildStep  -- ^ This step
                  -> String     -- ^ Cabal command
+                 -> [String]   -- ^ Additional cabal flags
                  -> BuildInfo
                  -> m Action
-simpleStepAction prevStep currStep cabalCommand bi = do
+simpleStepAction prevStep currStep cabalCommand cabalFlags bi = do
   pkgSourceDir <- askPackageSourceDir pkgId
   pkgBuildDir  <- askPackageBuildDir pkgId
-  let args = [ cabalCommand
-             , "-v2"
+  let args = [ cabalCommand ] ++ cabalFlags ++
+             [ "-v2"
              , "--builddir=" <> toFilePathNoTrailingSlash pkgBuildDir
              ]
   let action = command pkgSourceDir "cabal" args
@@ -181,20 +182,20 @@ stepConfigureAction bi = do
              , "--docdir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "doc"))
              , "--htmldir="    <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "html"))
              , "--haddockdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "haddock"))
-             ]
+             ] ++ bcExtraFlags (biConfig bi)
   let action = command pkgSourceDir "cabal" args
   genericStep dependencies action StepConfigure pkgId
   where pkgId = biPackage bi
         dependencies = Set.fromList $ fmap (Tag StepRegister) $ biLibDeps bi
 
 stepBuildAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
-stepBuildAction = simpleStepAction StepConfigure StepBuild "build"
+stepBuildAction = simpleStepAction StepConfigure StepBuild "build" ["-j1"]
 
 stepCopyAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
-stepCopyAction = simpleStepAction StepBuild StepCopy "copy"
+stepCopyAction = simpleStepAction StepBuild StepCopy "copy" []
 
 stepRegisterAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
-stepRegisterAction = simpleStepAction StepBuild StepRegister "register"
+stepRegisterAction = simpleStepAction StepBuild StepRegister "register" []
 
 -- TODO: Move to Path.Extra
 toFilePathNoTrailingSlash :: Path Abs Dir -> FilePath  

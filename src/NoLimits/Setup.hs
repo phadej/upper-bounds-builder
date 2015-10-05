@@ -4,6 +4,7 @@ module NoLimits.Setup where
 
 import Path
 import System.Directory
+import System.Process
 
 import NoLimits.Types
 
@@ -15,8 +16,7 @@ cmdSetup SetupOpts {..} = do
   mkdirp $ soPath </> $(mkRelDir "cache")
   mkdirp $ soPath </> $(mkRelDir "log")
   mkdirp $ soPath </> $(mkRelDir "src")
-  -- ghc-pkg init ../pkgdb
-  mkdirp $ soPath </> $(mkRelDir "pkgdb")
+  callProcess "ghc-pkg" [ "init", toFilePath $  soPath </> $(mkRelDir "pkgdb") ]
   mkdirp $ soPath </> $(mkRelDir "install")
   mkdirp $ soPath </> $(mkRelDir "dist/build")
   mkdirp $ soPath </> $(mkRelDir "dist/test")

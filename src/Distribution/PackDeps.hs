@@ -71,6 +71,8 @@ import Distribution.PackageDescription.Parse
 import Distribution.Version
 import Distribution.Text
 
+import Distribution.Extra
+
 import Data.Char (toLower, isSpace)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -210,6 +212,9 @@ data DescInfo = DescInfo
 
 instance Binary DescInfo
 instance HasStructuralInfo DescInfo
+
+instance HasPackageName DescInfo where
+  getPackageName = getPackageName . diPackage
 
 getDescInfo :: GenericPackageDescription -> DescInfo
 getDescInfo gpd = DescInfo

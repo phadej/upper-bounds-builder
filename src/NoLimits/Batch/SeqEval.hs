@@ -11,24 +11,26 @@ import           Data.Either (partitionEithers)
 import qualified Data.List as L
 import           Data.Map (Map)
 import qualified Data.Map as Map
+import           Data.Monoid
 import qualified Data.Set as Set
 import           Data.Traversable
 
 import           NoLimits.Batch.Job
 
-newtype StalledBatchException = StalledBatchException ()
+newtype StalledBatchException = StalledBatchException String
   deriving (Show, Typeable)
   
 instance Exception StalledBatchException
 
-evalBatch :: (Applicative m, MonadThrow m, Ord t) => [Job t m a] -> m (Map t a)
+evalBatch :: (Applicative m, MonadThrow m, Ord t, Show t) => [Job t m a] -> m (Map t a)
 evalBatch = evalBatch' Map.empty
 
-evalBatch' :: forall t m a. (Applicative m, MonadThrow m, Ord t) => Map t a -> [Job t m a] -> m (Map t a)
+evalBatch' :: forall t m a. (Applicative m, MonadThrow m, Ord t, Show t) => Map t a -> [Job t m a] -> m (Map t a)
 evalBatch' done []  = return done
 evalBatch' done jobs = do
   let (next, blocked) = partitionEithers $ L.map p jobs
-  when (L.null next) $ throwM $ StalledBatchException ()
+  when (L.null next) $ throwM $ StalledBatchException (let j = head blocked
+                                                       in show (jobResult j) <> " <- " <> show (jobPrereq j))
   results <- traverse (uncurry runJob) next
   evalBatch' (Map.union done $ Map.fromList results) blocked
   where 

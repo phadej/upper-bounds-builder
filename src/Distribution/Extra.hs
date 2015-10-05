@@ -4,11 +4,21 @@ import Data.Version
 import Distribution.Package
 import Text.ParserCombinators.ReadP (readP_to_S)
 
-dependencyName :: Dependency -> String
-dependencyName (Dependency (PackageName name) _) = name
+class HasPackageName a where
+  getPackageName :: a -> PackageName
+  
+getPackageNameString :: HasPackageName a =>  a-> String
+getPackageNameString x = case getPackageName x of
+                           (PackageName name) -> name
 
-packageIdentifierName :: PackageIdentifier -> String
-packageIdentifierName (PackageIdentifier (PackageName name) _) = name
+instance HasPackageName PackageName where
+  getPackageName = id
+
+instance HasPackageName Dependency where
+  getPackageName (Dependency name _) = name   
+
+instance HasPackageName PackageIdentifier where
+  getPackageName (PackageIdentifier name _) = name
 
 packageIdentifierString :: PackageIdentifier -> String
 packageIdentifierString (PackageIdentifier (PackageName name) version) = name ++ "-" ++ showVersion version

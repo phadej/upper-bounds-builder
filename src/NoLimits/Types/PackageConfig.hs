@@ -3,11 +3,13 @@ module NoLimits.Types.PackageConfig where
 
 import           Control.Applicative
 import           Data.Aeson
-import qualified Data.Map as Map
 import           Data.Map (Map)
+import qualified Data.Map as Map
 import           Data.Maybe (fromMaybe)
+import           Data.Semigroup
 
 import           NoLimits.Orphans ()
+import           NoLimits.Types.BuildInfo
 
 newtype AptPackage = AptPackage { getAptPackage :: String }
   deriving (Eq, Ord, Show)
@@ -25,17 +27,13 @@ instance FromJSON CliFlag where
 
 data PackageConfig = PackageConfig
   { pcSkip           :: Bool
-  , pcAllowNewer     :: Bool
-  , pcExtraFlags     :: [CliFlag]
-  , pcAptPackages    :: [AptPackage]
-  , pcSkipTests      :: Bool
-  , pcSkipBenchmarks :: Bool
-  , pcExpectTestFail :: Bool
+  , pcBuildConfig    :: BuildConfig
+  --  , pcAptPackages    :: [AptPackage]
   }
   deriving (Eq, Ord, Show)
 
 defPackageConfig :: PackageConfig
-defPackageConfig = PackageConfig False True [] [] False False False
+defPackageConfig = PackageConfig False mempty
 
 lookupPackageConfig :: String -> Map String PackageConfig -> PackageConfig
 lookupPackageConfig name m = fromMaybe defPackageConfig (Map.lookup name m)
@@ -43,11 +41,6 @@ lookupPackageConfig name m = fromMaybe defPackageConfig (Map.lookup name m)
 instance FromJSON PackageConfig where
   parseJSON = withObject "Package config" $ \obj ->
     PackageConfig <$> obj .:? "skip" .!= False
-                  <*> obj .:? "allow-newer" .!= True
-                  <*> obj .:? "extra-flags" .!= []
-                  <*> obj .:? "apt-packages" .!= []
-                  <*> obj .:? "skip-tests" .!= False
-                  <*> obj .:? "skip-benchmarks" .!= False
-                  <*> obj .:? "expected-test-failure" .!= False
+                  <*> parseJSON (Object obj)
 
 type PackageConfigs = Map String PackageConfig

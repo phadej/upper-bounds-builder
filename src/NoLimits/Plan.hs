@@ -26,29 +26,33 @@ plan newest pkgcfg =
        Nothing  -> throwM $ PackageMissingException packageInput
        Just dis -> do
          let skippable = PackageName . fst <$> filter (pcSkip . snd) (Map.toList pkgcfg)
-         return . removeUnexisting newest skippable . deepDeps newest $ dis -- Consider all dependencies!
+         return . removeUnexisting newest skippable . fmap attachBuildConfig . deepDeps newest $ dis -- Consider all dependencies!
+  where attachBuildConfig di = (di, lookupPackageConfig (getPackageNameString di) pkgcfg)
 
-removeUnexisting :: Newest        -- ^ Package database
-                 -> [PackageName] -- ^ Packages tagged skippable
-                 -> [DescInfo]    -- ^ Package descriptions
+removeUnexisting :: Newest                       -- ^ Package database
+                 -> [PackageName]                -- ^ Packages tagged skippable
+                 -> [(DescInfo, PackageConfig)]  -- ^ Package descriptions
                  -> [BuildInfo]
 removeUnexisting newest toSkip = map toBuildInfo . filter pDescInfo
-  where pDescInfo di     = pName (packageIdentifierName . diPackage $ di)
-        
-        toBuildInfo :: DescInfo -> BuildInfo
-        toBuildInfo di = BuildInfo
+  where pDescInfo (di, _)     = pName (getPackageNameString di)
+
+        toBuildInfo :: (DescInfo, PackageConfig) -> BuildInfo
+        toBuildInfo (di, pc) = BuildInfo
           { biPackage   = diPackage di
-          , biLibDeps   = mapMaybe lookupNewestDependency . diLibDeps $ di
+          , biLibDeps   = filter ((/= getPackageName di) . getPackageName) -- may contain self in executables!
+                        . mapMaybe lookupNewestDependency
+                        . diLibDeps
+                        $ di 
           , biTestDeps  = [] -- TODO:
           , biBenchDeps = []
+          , biConfig    = pcBuildConfig pc
           }
 
         lookupNewestDependency :: Dependency -> Maybe PackageIdentifier
         lookupNewestDependency (Dependency name@(PackageName name') _)
-          | name `elem` toSkip'  = Nothing
-          | otherwise            = diPackage <$> (Map.lookup name' newest >>= piDesc)
+          | name `elem` toSkip'       = Nothing
+          | otherwise                 = diPackage <$> (Map.lookup name' newest >>= piDesc)
 
-        pDependency dep  = pName (dependencyName dep)
         pName name       = Map.member name newest && notElem (PackageName name) toSkip'
         toSkip'          = alwaysPresent ++ toSkip
 

@@ -45,6 +45,7 @@ library
     , pretty
     , monad-logger
     , bifunctors
+    , semigroups
     , binary
     , mtl
     , dlist
@@ -100,6 +101,7 @@ executable upper-bounds-builder
     , pretty
     , monad-logger
     , bifunctors
+    , semigroups
     , binary
     , mtl
     , dlist

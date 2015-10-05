@@ -10,12 +10,20 @@ HsOpenSSL:
   # https://github.com/phonohawk/HsOpenSSL/issues/36
   extra-flags:
     - "-f-fast-bignum"
+  macosx:
+    extra-flags:
+      - "--extra-include-dirs=/usr/local/opt/openssl/include"
+      - "--extra-lib-dirs=/usr/local/opt/openssl/lib"
   apt-packages:
     - libssl-dev
 libxml:
   ubuntu:
     extra-flags:
       - "--extra-include-dirs=/usr/include/libxml2"
+  macosx:
+    extra-flags:
+      - "--extra-include-dirs=/usr/local/opt/libxml2/include/libxml2"
+      - "--extra-lib-dirs=/usr/local/opt/libxml2/lib"
   apt-packages:
     - libxml2-dev
 tar:
@@ -72,7 +80,8 @@ wreq:
   skip-tests: true
 zero: {}
 pcre-light:
-  extra-flags:
-    - "--extra-include-dirs=/usr/local/pcre"
+  macosx:
+    extra-flags:
+      - "--extra-include-dirs=/usr/local/include"
   apt-packages:
     - libpcre3-dev

@@ -29,6 +29,7 @@ dependencies:
   - pretty
   - monad-logger
   - bifunctors
+  - semigroups
   - binary
   - mtl
   - dlist
