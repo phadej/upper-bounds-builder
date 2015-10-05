@@ -14,8 +14,9 @@ import           Control.Monad.Reader
 import           Data.Aeson (withObject)
 import           Data.ByteString as BS
 import           Data.Data (Typeable)
-import           Data.List (intercalate)
+import           Data.List (sortBy)
 import qualified Data.Map as Map
+import Data.Ord (comparing)
 import           Data.Monoid
 import           Data.Set (Set)
 import qualified Data.Set as Set
@@ -177,6 +178,8 @@ configureFlags pkgBuildDir packageDbDir installDir =
   , "--docdir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "doc"))
   , "--htmldir="    <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "html"))
   , "--haddockdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "haddock"))
+  -- Extra dirs
+  , "--extra-prog-path=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "bin"))
   ]
 
 stepConfigureAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
@@ -226,23 +229,29 @@ stepTestRunAction = simpleStepAction StepTestBuild StepTestRun "build" ["-j1"]
 toFilePathNoTrailingSlash :: Path Abs Dir -> FilePath
 toFilePathNoTrailingSlash = dropTrailingPathSeparator . toFilePath
 
-allActions :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m [Action]
-allActions bi = do
+buildActions :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m [Action]
+buildActions bi = do
   a0 <- stepGetAction bi
   a1 <- stepConfigureAction bi
   a2 <- stepBuildAction bi
   a3 <- stepCopyAction bi
   a4 <- stepRegisterAction bi
+  return $ [ a0, a1, a2, a3, a4 ]
+
+testActions :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m [Action]
+testActions bi = do
   b0 <- stepTestConfigureAction bi
   b1 <- stepTestBuildAction bi
   b2 <- stepTestRunAction bi
-  let testActions = if biRunTests bi
-                       then [ b0, b1, b2 ]
-                       else []
-  return $ [ a0, a1, a2, a3, a4 ] <> testActions
+  return $ if biRunTests bi
+              then [ b0, b1, b2 ]
+              else []
 
-makeBuild :: BuildEnv -> [BuildInfo] -> IO ()
-makeBuild benv dis = do
-  jobs <- Prelude.concat <$> runReaderT (traverse allActions dis) benv
-  res <- evalBatch (fmap (transformJobAction runStderrLoggingT) jobs)
+makeBuild :: Bool -> BuildEnv -> [BuildInfo] -> IO ()
+makeBuild runTests benv dis = do
+  jobs <- sortBy (comparing jobResult) . Prelude.concat <$> runReaderT (traverse allActions dis) benv
+  res <- runStderrLoggingT $ evalBatch jobs
   print $ Prelude.map snd $ Prelude.filter ((/= ResultOk) . snd) $ Map.toList res
+  where allActions bi = (<>) <$> buildActions bi <*> testActions' bi
+        testActions' bi | runTests  = testActions bi
+                        | otherwise = return []

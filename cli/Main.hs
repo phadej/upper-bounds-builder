@@ -45,7 +45,7 @@ import           Debug.Trace
 optionParser :: O.Parser (IO ())
 optionParser = subparser $ mconcat
   [ O.command "setup" $ info (helper <*> (cmdSetup <$> setupOptsParser)) $ progDesc "Run setup commands"
-  , O.command "build" $ info (helper <*> (cmdBuildTmp <$> setupOptsParser)) $ progDesc "Run the build"
+  , O.command "build" $ info (helper <*> (cmdBuild <$> setupOptsParser)) $ progDesc "Run the build"
   ]
 
 main :: IO ()
@@ -55,12 +55,12 @@ main = join (execParser opts)
       ( fullDesc
      <> header "upper-bounds-builder - building without limits" )
 
-cmdBuildTmp :: SetupOpts -> IO ()
-cmdBuildTmp SetupOpts {..} = do
+cmdBuild :: SetupOpts -> IO ()
+cmdBuild SetupOpts {..} = do
   pkgcfg <- decodeFileThrow "config.yaml" :: IO PackageConfigs
   newest <- cached (soPath </> $(mkRelFile "cache/newest")) loadNewest
   alldeps <- plan newest pkgcfg
-  makeBuild benv $ sortBy (compare `on` biPackage) alldeps
+  makeBuild True benv $ sortBy (compare `on` biPackage) alldeps
   where
     benv = BuildEnv
       { beBuildRootDir = soPath

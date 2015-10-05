@@ -85,3 +85,7 @@ pcre-light:
       - "--extra-include-dirs=/usr/local/include"
   apt-packages:
     - libpcre3-dev
+
+# TODO
+cassava:
+  skip-tests: true
