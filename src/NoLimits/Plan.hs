@@ -43,8 +43,10 @@ removeUnexisting newest toSkip = map toBuildInfo . filter pDescInfo
                         . mapMaybe lookupNewestDependency
                         . diLibDeps
                         $ di 
-          , biTestDeps  = [] -- TODO:
-          , biBenchDeps = []
+          , biTestDeps  = mapMaybe lookupNewestDependency . diTestDeps $ di -- TODO:
+          , biBenchDeps = mapMaybe lookupNewestDependency . diBenchDeps $ di
+          , biHasTests  = diHasTests di
+          , biHasBench  = diHasBench di
           , biConfig    = pcBuildConfig pc
           }
 

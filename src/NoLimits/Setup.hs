@@ -18,6 +18,4 @@ cmdSetup SetupOpts {..} = do
   mkdirp $ soPath </> $(mkRelDir "src")
   callProcess "ghc-pkg" [ "init", toFilePath $  soPath </> $(mkRelDir "pkgdb") ]
   mkdirp $ soPath </> $(mkRelDir "install")
-  mkdirp $ soPath </> $(mkRelDir "dist/build")
-  mkdirp $ soPath </> $(mkRelDir "dist/test")
-  mkdirp $ soPath </> $(mkRelDir "dist/bench")
+  mkdirp $ soPath </> $(mkRelDir "dist")

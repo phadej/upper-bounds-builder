@@ -58,7 +58,7 @@ instance ToJSON Tag where
   toJSON (Tag step name) = object [ "step" .= step, "package" .= name ]
 
 instance FromJSON Tag where
-  parseJSON = withObject "Tag" $ \obj -> 
+  parseJSON = withObject "Tag" $ \obj ->
     Tag <$> obj .: "step"
         <*> obj .: "package"
 
@@ -158,35 +158,54 @@ simpleStepAction prevStep currStep cabalCommand cabalFlags bi = do
   where pkgId = biPackage bi
         dependencies = Set.singleton $ Tag prevStep pkgId
 
-stepConfigureAction:: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
+configureFlags :: Path Abs Dir -> Path Abs Dir -> Path Abs Dir -> [String]
+configureFlags pkgBuildDir packageDbDir installDir =
+  [ "-v2"
+  , "--allow-newer"
+  -- Build directory
+  , "--builddir=" <> toFilePathNoTrailingSlash pkgBuildDir
+  -- Package databases
+  , "--package-db=clear"
+  , "--package-db=global"
+  , "--package-db=" <> toFilePathNoTrailingSlash packageDbDir
+  -- Install directories
+  , "--libdir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "lib"))
+  , "--bindir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "bin"))
+  , "--datadir="    <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "share"))
+  , "--libexecdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "libexec"))
+  , "--sysconfdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "etc"))
+  , "--docdir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "doc"))
+  , "--htmldir="    <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "html"))
+  , "--haddockdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "haddock"))
+  ]
+
+stepConfigureAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
 stepConfigureAction bi = do
   pkgSourceDir <- askPackageSourceDir pkgId
   pkgBuildDir  <- askPackageBuildDir pkgId
   installDir   <- askInstallDir
   packageDbDir <- askPackageDbDir
-  let args = [ "configure"
-             , "-v2"
-             , "--allow-newer"
-             -- Build directory
-             , "--builddir=" <> toFilePathNoTrailingSlash pkgBuildDir
-             -- Package databases
-             , "--package-db=clear"
-             , "--package-db=global"
-             , "--package-db=" <> toFilePathNoTrailingSlash packageDbDir
-             -- Install directories
-             , "--libdir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "lib"))
-             , "--bindir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "bin"))
-             , "--datadir="    <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "share"))
-             , "--libexecdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "libexec"))
-             , "--sysconfdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "etc"))
-             , "--docdir="     <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "doc"))
-             , "--htmldir="    <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "html"))
-             , "--haddockdir=" <> toFilePathNoTrailingSlash (installDir </> $(mkRelDir "haddock"))
-             ] ++ bcExtraFlags (biConfig bi)
+  let args = [ "configure" ]
+           ++ configureFlags pkgBuildDir packageDbDir installDir
+           ++ bcExtraFlags (biConfig bi)
   let action = command pkgSourceDir "cabal" args
   genericStep dependencies action StepConfigure pkgId
   where pkgId = biPackage bi
         dependencies = Set.fromList $ fmap (Tag StepRegister) $ biLibDeps bi
+
+stepTestConfigureAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
+stepTestConfigureAction bi = do
+  pkgSourceDir <- askPackageSourceDir pkgId
+  pkgBuildDir  <- askPackageBuildDir pkgId
+  installDir   <- askInstallDir
+  packageDbDir <- askPackageDbDir
+  let args = [ "configure" , "--enable-tests"]
+           ++ configureFlags pkgBuildDir packageDbDir installDir
+           ++ bcExtraFlags (biConfig bi)
+  let action = command pkgSourceDir "cabal" args
+  genericStep dependencies action StepTestConfigure pkgId
+  where pkgId = biPackage bi
+        dependencies = Set.singleton (Tag StepRegister pkgId) <> Set.fromList (fmap (Tag StepRegister) $ biTestDeps bi)
 
 stepBuildAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
 stepBuildAction = simpleStepAction StepConfigure StepBuild "build" ["-j1"]
@@ -197,8 +216,14 @@ stepCopyAction = simpleStepAction StepBuild StepCopy "copy" []
 stepRegisterAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
 stepRegisterAction = simpleStepAction StepBuild StepRegister "register" []
 
+stepTestBuildAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
+stepTestBuildAction = simpleStepAction StepTestConfigure StepTestBuild "build" ["-j1"]
+
+stepTestRunAction :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m Action
+stepTestRunAction = simpleStepAction StepTestBuild StepTestRun "build" ["-j1"]
+
 -- TODO: Move to Path.Extra
-toFilePathNoTrailingSlash :: Path Abs Dir -> FilePath  
+toFilePathNoTrailingSlash :: Path Abs Dir -> FilePath
 toFilePathNoTrailingSlash = dropTrailingPathSeparator . toFilePath
 
 allActions :: (MonadReader env m, HasBuildRootDir env, HasSourceDir env, MonadThrow m) => BuildInfo -> m [Action]
@@ -208,7 +233,13 @@ allActions bi = do
   a2 <- stepBuildAction bi
   a3 <- stepCopyAction bi
   a4 <- stepRegisterAction bi
-  return [ a0, a1, a2, a3, a4 ]
+  b0 <- stepTestConfigureAction bi
+  b1 <- stepTestBuildAction bi
+  b2 <- stepTestRunAction bi
+  let testActions = if biRunTests bi
+                       then [ b0, b1, b2 ]
+                       else []
+  return $ [ a0, a1, a2, a3, a4 ] <> testActions
 
 makeBuild :: BuildEnv -> [BuildInfo] -> IO ()
 makeBuild benv dis = do

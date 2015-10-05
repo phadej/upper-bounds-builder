@@ -24,8 +24,10 @@ buildStepString StepBuild           = "build"
 buildStepString StepCopy            = "copy"
 buildStepString StepRegister        = "register"
 buildStepString StepTestConfigure   = "test-configure"
+buildStepString StepTestBuild       = "test-build"
+buildStepString StepTestRun         = "test-run"
 buildStepString StepBenchConfigure  = "bench-configure"
-buildStepString _ = error "stepSuffix: implement me"
+buildStepString StepBenchBuild      = "bench-build"
 
 buildStepLookupList :: [(String, BuildStep)]
 buildStepLookupList = fmap f [minBound..maxBound]

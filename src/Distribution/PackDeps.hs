@@ -54,6 +54,7 @@ module Distribution.PackDeps
       -- * Internal
     , PackInfo (..)
     , DescInfo (..)
+    , diDeps
     ) where
 
 import System.Directory (getAppUserDataDirectory)
@@ -186,8 +187,8 @@ getReverses newest =
   where
     -- dep = dependency, rel = relying package
     toTuples (_, PackInfo { piDesc = Nothing }) = []
-    toTuples (rel, PackInfo { piDesc = Just DescInfo { diDeps = deps } }) =
-        map (toTuple rel) deps
+    toTuples (rel, PackInfo { piDesc = Just di }) =
+        map (toTuple rel) (diDeps di)
     toTuple rel (Dependency (PackageName dep) range) = (dep, (rel, range))
     hoist :: Ord a => [(a, b)] -> [(a, [b])]
     hoist = map ((fst . head) &&& map snd)
@@ -203,12 +204,18 @@ getReverses newest =
 -- | Information on a single package.
 data DescInfo = DescInfo
     { diHaystack :: String
-    , diDeps :: [Dependency]
     , diLibDeps :: [Dependency]
+    , diTestDeps :: [Dependency]
+    , diBenchDeps :: [Dependency]
+    , diHasTests :: Bool
+    , diHasBench :: Bool
     , diPackage :: PackageIdentifier
     , diSynopsis :: String
     }
     deriving (Show, Read, Generic)
+
+diDeps :: DescInfo -> [Dependency]
+diDeps di = diLibDeps di ++ diTestDeps di ++ diBenchDeps di
 
 instance Binary DescInfo
 instance HasStructuralInfo DescInfo
@@ -219,8 +226,11 @@ instance HasPackageName DescInfo where
 getDescInfo :: GenericPackageDescription -> DescInfo
 getDescInfo gpd = DescInfo
     { diHaystack = map toLower $ author p ++ maintainer p ++ name
-    , diDeps = getDeps gpd
     , diLibDeps = getLibDeps gpd
+    , diTestDeps = getTestDeps gpd
+    , diBenchDeps = getBenchDeps gpd
+    , diHasTests = not . null $ condTestSuites gpd
+    , diHasBench = not . null $ condBenchmarks gpd
     , diPackage = pi'
     , diSynopsis = synopsis p
     }
@@ -234,12 +244,6 @@ depToSingletonMap (Dependency pn vr) = Map.singleton pn vr
 combineDependencies :: [Dependency] -> [Dependency]
 combineDependencies = fmap (uncurry Dependency) .  Map.toList . Map.map simplifyVersionRange . Map.unionsWith unionVersionRanges . fmap depToSingletonMap
 
-getDeps :: GenericPackageDescription -> [Dependency]
-getDeps x = getLibDeps x ++ concat
-    [ combineDependencies $ concatMap (condTreeAllConstraints . snd) (condTestSuites x)
-    , combineDependencies $ concatMap (condTreeAllConstraints . snd) (condBenchmarks x)
-    ]
-
 condTreeAllConstraints :: Monoid c => CondTree v c a -> c
 condTreeAllConstraints tree = condTreeConstraints tree <> mconcat (fmap r $ condTreeComponents tree)
   where r (_, con, alt) = condTreeAllConstraints con <> maybe mempty condTreeAllConstraints alt
@@ -248,6 +252,12 @@ condTreeAllConstraints tree = condTreeConstraints tree <> mconcat (fmap r $ cond
 getLibDeps :: GenericPackageDescription -> [Dependency]
 getLibDeps gpd = combineDependencies $ maybe [] (condTreeAllConstraints) (condLibrary gpd)
                  ++ combineDependencies (concatMap (condTreeAllConstraints . snd) (condExecutables gpd))
+
+getTestDeps :: GenericPackageDescription -> [Dependency]
+getTestDeps gpd = combineDependencies $ concatMap (condTreeAllConstraints . snd) (condTestSuites gpd)
+
+getBenchDeps :: GenericPackageDescription -> [Dependency]
+getBenchDeps gpd = combineDependencies $ concatMap (condTreeAllConstraints . snd) (condBenchmarks gpd)
 
 checkDeps :: Newest -> DescInfo
           -> (PackageName, Version, CheckDepsRes)
